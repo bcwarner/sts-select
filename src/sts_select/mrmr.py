@@ -23,7 +23,9 @@ class MRMRBase(BaseEstimator):
             raise TypeError("scorer must be a BaseScorer")
 
         if not self.scorer.scored():
-            raise ValueError("Must have redundancy/relevancy scores before running mRMR.")
+            raise ValueError(
+                "Must have redundancy/relevancy scores before running mRMR."
+            )
 
     def distance_X_y(self, original):
         """
@@ -85,7 +87,9 @@ class MRMRBase(BaseEstimator):
             max_red = None
             newLastFeatureSelected = None
 
-            lastFeatureSelectedMI = self.score_lfs_candidate(X, candidatesVec, lastFeatureSelected)
+            lastFeatureSelectedMI = self.score_lfs_candidate(
+                X, candidatesVec, lastFeatureSelected
+            )
             for idxc, can in enumerate(candidates):
                 relevance = relevancesVector[can]
                 accumulatedRedundancy[can] += lastFeatureSelectedMI[idxc]
@@ -109,4 +113,3 @@ class MRMRBase(BaseEstimator):
         ]
         # Assign each of the selected features and their scores to sel_fetures, mrmr, relevancies, redundancies
         return self
-

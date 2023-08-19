@@ -1,7 +1,7 @@
 # Wrappers for baseline models so they fit the SBERT API
 import os.path
 
-from gensim.models import Word2Vec, FastText
+from gensim.models import FastText, Word2Vec
 from tqdm import tqdm
 
 
@@ -10,6 +10,7 @@ class SkipgramModel:
         self.model = None
         if model_path is not None:
             self.model = Word2Vec.load(os.path.join(model_path, "model.bin"))
+
     def fit(self, train_objectives=None, epochs=None, warmup_steps=None):
         # Called by trainer to fit the model.
         dataloader = train_objectives[0][0]
@@ -23,7 +24,9 @@ class SkipgramModel:
 
     def encode(self, sentences, batch_size=1, show_progress_bar=False):
         output = []
-        iterator = sentences if not show_progress_bar else tqdm(sentences, desc="Batches")
+        iterator = (
+            sentences if not show_progress_bar else tqdm(sentences, desc="Batches")
+        )
         # Batch size not relevant for this model
         for sentence in iterator:
             output.append(self.model.wv[sentence])
@@ -31,6 +34,7 @@ class SkipgramModel:
 
     def save(self, path):
         self.model.save(os.path.join(path, "model.bin"))
+
 
 class FastTextModel:
     def __init__(self, model_path=None):
@@ -52,7 +56,9 @@ class FastTextModel:
     def encode(self, sentences, batch_size=1, show_progress_bar=False):
         output = []
 
-        iterator = sentences if not show_progress_bar else tqdm(sentences, desc="Batches")
+        iterator = (
+            sentences if not show_progress_bar else tqdm(sentences, desc="Batches")
+        )
         # Batch size not relevant for this model
         for sentence in iterator:
             output.append(self.model.wv[sentence])
@@ -60,4 +66,3 @@ class FastTextModel:
 
     def save(self, path):
         self.model.save(os.path.join(path, "model.bin"))
-

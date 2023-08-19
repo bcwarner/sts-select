@@ -6,15 +6,14 @@ from collections import OrderedDict
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 import pandas as pd
 from pandas import DataFrame
 from pandas.core.dtypes.common import is_numeric_dtype
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from redcap_sts_scorers.train import dset_options, model_options
 import tikzplotlib
+from redcap_sts_scorers.train import dset_options, model_options
 
 if __name__ == "__main__":
     # Parse arguments
@@ -22,7 +21,9 @@ if __name__ == "__main__":
     # - xlsx fname to be cached as for future use
     # - what kind of summarization we want to do
     # - what kind of column we should group by
-    parser = argparse.ArgumentParser(prog="summarize", description="Summarize the results.")
+    parser = argparse.ArgumentParser(
+        prog="summarize", description="Summarize the results."
+    )
     parser.add_argument(
         "-f",
         "--files",
@@ -99,7 +100,9 @@ if __name__ == "__main__":
     # Add a column indicating test-train difference for each score
     for col in data.columns:
         if col.endswith("_test"):
-            data[col.replace("_test", "_diff")] = data[col] - data[col.replace("_test", "_train")]
+            data[col.replace("_test", "_diff")] = (
+                data[col] - data[col.replace("_test", "_train")]
+            )
 
     plots_dir = os.path.join(os.path.dirname(args.files[0]), "plots")
     if not os.path.exists(plots_dir):
@@ -113,16 +116,30 @@ if __name__ == "__main__":
             "dset": "Fine-Tuning Dataset" if not latex else "FT Dataset",
             "roc_auc_score_test": "Test AUROC" if not latex else ("AUROC", "Test"),
             "roc_auc_score_train": "Train AUROC" if not latex else ("AUROC", "Train"),
-            "roc_auc_score_diff": "Test - Train AUROC" if not latex else ("AUROC", r"$\Delta$"),
-            "average_precision_score_test": "Test AUPRC" if not latex else ("AUPRC", "Test"),
-            "average_precision_score_train": "Train AUPRC" if not latex else ("AUPRC", "Train"),
-            "average_precision_score_diff": "Test - Train AUPRC" if not latex else ("AUPRC", r"$\Delta$"),
-            "accuracy_score_test": "Test Accuracy" if not latex else ("Accuracy", "Test"),
-            "accuracy_score_train": "Train Accuracy" if not latex else ("Accuracy", "Train"),
-            "accuracy_score_diff": "Test - Train Accuracy" if not latex else ("Accuracy", r"$\Delta$"),
+            "roc_auc_score_diff": "Test - Train AUROC"
+            if not latex
+            else ("AUROC", r"$\Delta$"),
+            "average_precision_score_test": "Test AUPRC"
+            if not latex
+            else ("AUPRC", "Test"),
+            "average_precision_score_train": "Train AUPRC"
+            if not latex
+            else ("AUPRC", "Train"),
+            "average_precision_score_diff": "Test - Train AUPRC"
+            if not latex
+            else ("AUPRC", r"$\Delta$"),
+            "accuracy_score_test": "Test Accuracy"
+            if not latex
+            else ("Accuracy", "Test"),
+            "accuracy_score_train": "Train Accuracy"
+            if not latex
+            else ("Accuracy", "Train"),
+            "accuracy_score_diff": "Test - Train Accuracy"
+            if not latex
+            else ("Accuracy", r"$\Delta$"),
             "clinical_vocab": "Clinical Pairs",
             "gen_vocab": "General Pairs",
-            "ext": "ClinicalSTS", # We combine this with the clinical vocab since it captures the same idea.
+            "ext": "ClinicalSTS",  # We combine this with the clinical vocab since it captures the same idea.
             "combined_vocab": "Combined Pairs",
             "classifier": "Classifier",
             "ClinicalBERT": "emilyalsentzer/Bio_ClinicalBERT",
@@ -155,7 +172,9 @@ if __name__ == "__main__":
             plt.subplot(1, 2, 1)
         # Plot a boxplot of the score_col grouped by hyperparam_col
         opts = data_[hyperparam_col].dropna().unique()
-        opts = sorted(opts, key=lambda x: np.max(data_[data_[hyperparam_col] == x][score_col]))
+        opts = sorted(
+            opts, key=lambda x: np.max(data_[data_[hyperparam_col] == x][score_col])
+        )
         plt.gcf().set_size_inches(3.5, 2.75)
         for idx, opt in enumerate(opts):
             plt.violinplot(
@@ -188,7 +207,6 @@ if __name__ == "__main__":
 
         # Histogram of the score_col grouped by hyperparam_col
 
-
     group_by("feature_selector", "roc_auc_score_test", "roc_auc_score_diff")
     group_by("scorer", "roc_auc_score_test", "roc_auc_score_diff")
     group_by("model", "roc_auc_score_test")
@@ -216,7 +234,9 @@ if __name__ == "__main__":
         results = results.drop(columns=["classifier"])
 
         # Replace SelectFromModel with SFM
-        results["feature_selector"] = results["feature_selector"].apply(lambda x: x.replace("SelectFromModel", "SFM") if not pd.isna(x) else x)
+        results["feature_selector"] = results["feature_selector"].apply(
+            lambda x: x.replace("SelectFromModel", "SFM") if not pd.isna(x) else x
+        )
 
         # Reorder the _diff columns to be next to their _train counterparts
         cols = list(results.columns)
@@ -227,10 +247,14 @@ if __name__ == "__main__":
         results = results[cols]
 
         # For the dset colum, delete "_vocab"
-        results["dset"] = results["dset"].apply(lambda x: x.replace("_vocab", "") if not pd.isna(x) else x)
+        results["dset"] = results["dset"].apply(
+            lambda x: x.replace("_vocab", "") if not pd.isna(x) else x
+        )
 
         # Iterate through the data and replace _ with \_
-        results = results.apply(lambda x: x.str.replace("_", r"\_") if x.dtype == "object" else x)
+        results = results.apply(
+            lambda x: x.str.replace("_", r"\_") if x.dtype == "object" else x
+        )
 
         # Select the best result among MRMRBase, TopNSelector, and StdDevSelector where dset is not empty
         # Keep the other results as well
@@ -238,8 +262,16 @@ if __name__ == "__main__":
         min_results = OrderedDict()
         main_results = {}
         ours = ["MRMRBase", "TopNSelector", "StdDevSelector"]
-        fs_max = results[~pd.isna(results["dset"])].groupby("feature_selector").max()["roc_auc_score_test"]
-        fs_min = results[~pd.isna(results["dset"])].groupby("feature_selector").apply(lambda x: abs(x["roc_auc_score_diff"]).min())
+        fs_max = (
+            results[~pd.isna(results["dset"])]
+            .groupby("feature_selector")
+            .max()["roc_auc_score_test"]
+        )
+        fs_min = (
+            results[~pd.isna(results["dset"])]
+            .groupby("feature_selector")
+            .apply(lambda x: abs(x["roc_auc_score_diff"]).min())
+        )
         for idx, row in results.iterrows():
             in_ours = row["feature_selector"] in ours
             if in_ours and not pd.isna(row["dset"]):
@@ -257,7 +289,14 @@ if __name__ == "__main__":
         # Combine the best and min results
         comb_results = {**best_results, **min_results}
         # Sort comb_results by the the auroc score
-        comb_results = OrderedDict(x for x in sorted(comb_results.items(), key=lambda x: x[1]["roc_auc_score_test"], reverse=True))
+        comb_results = OrderedDict(
+            x
+            for x in sorted(
+                comb_results.items(),
+                key=lambda x: x[1]["roc_auc_score_test"],
+                reverse=True,
+            )
+        )
 
         # Add a star if it was in best, dagger if in min.
         for key in comb_results.keys():
@@ -267,16 +306,29 @@ if __name__ == "__main__":
                 comb_results[key]["feature_selector"] += r"$^\dagger$"
 
         # Sort the main results by the auroc score
-        main_results = OrderedDict(x for x in sorted(main_results.items(), key=lambda x: x[1]["roc_auc_score_test"], reverse=True))
+        main_results = OrderedDict(
+            x
+            for x in sorted(
+                main_results.items(),
+                key=lambda x: x[1]["roc_auc_score_test"],
+                reverse=True,
+            )
+        )
 
         results_all = results.copy()
-        results = pd.concat([DataFrame.from_dict(comb_results, orient="index"), DataFrame.from_dict(main_results, orient="index")])
+        results = pd.concat(
+            [
+                DataFrame.from_dict(comb_results, orient="index"),
+                DataFrame.from_dict(main_results, orient="index"),
+            ]
+        )
         # Sort by whether the dset is empty or not
         results = results.sort_values(by="dset", ascending=False)
 
         # For each numerical column, bold the best value and round to 3 decimal places
         for col in results.columns:
             if is_numeric_dtype(results[col]):
+
                 def test(x, col):
                     fmt = f"{x:.3f}"
                     if x == results_all[col].max():
@@ -286,10 +338,12 @@ if __name__ == "__main__":
                         return r"\textbf{" + fmt + "}"
                     else:
                         return fmt
+
                 results[col] = results[col].apply(lambda x: test(x, col))
         # Replace the non-numeric columns with their nice names
         for col in results.columns:
             if not is_numeric_dtype(results[col]):
+
                 def nice_name_ext(x):
                     if pd.isna(x):
                         return x
@@ -302,6 +356,7 @@ if __name__ == "__main__":
                         z = z + suffix
                     if z is not None:
                         return z.replace("&", r"\&")
+
                 results[col] = results[col].apply(nice_name_ext)
 
         # Drop the columns that are not needed
@@ -312,29 +367,33 @@ if __name__ == "__main__":
         )
         results.columns = index
         # Drop the accuracy multiindex, not enough space
-        results = results.drop(columns=[nice_name_map("accuracy_score_test", latex=True),
-                                        nice_name_map("accuracy_score_train", latex=True),
-                                        nice_name_map("accuracy_score_diff", latex=True)])
+        results = results.drop(
+            columns=[
+                nice_name_map("accuracy_score_test", latex=True),
+                nice_name_map("accuracy_score_train", latex=True),
+                nice_name_map("accuracy_score_diff", latex=True),
+            ]
+        )
         # Remove row index
-        #results = results.set_index([[""] * results.shape[0]])
-        out = results.to_latex(index=False,
-                               escape=False,
-                               bold_rows=False,
-                               label=f"tab:{classifier}",
-                               na_rep="-",
-                               multicolumn=True,
-                               multicolumn_format="|l|",
-                               column_format="|" + "|".join(["l"] * results.shape[1]) + "|",
-                               caption=f"Results for {classifier} with baseline feature selection methods "
-                                        f"and using {best_model} to score features.",
-                               )
+        # results = results.set_index([[""] * results.shape[0]])
+        out = results.to_latex(
+            index=False,
+            escape=False,
+            bold_rows=False,
+            label=f"tab:{classifier}",
+            na_rep="-",
+            multicolumn=True,
+            multicolumn_format="|l|",
+            column_format="|" + "|".join(["l"] * results.shape[1]) + "|",
+            caption=f"Results for {classifier} with baseline feature selection methods "
+            f"and using {best_model} to score features.",
+        )
         out = out.replace("{} &", "")
 
         # Print table
         print(f"======= {classifier} =======")
         print(out)
         print("==============================")
-
 
     table_by_classifier("MLP")
     # - Table with best performing overall vs. baselines
@@ -354,7 +413,8 @@ if __name__ == "__main__":
 
             # Replace SelectFromModel with SFM
             results["feature_selector"] = results["feature_selector"].apply(
-                lambda x: x.replace("SelectFromModel", "SFM") if not pd.isna(x) else x)
+                lambda x: x.replace("SelectFromModel", "SFM") if not pd.isna(x) else x
+            )
 
             # Reorder the _diff columns to be next to their _train counterparts
             cols = list(results.columns)
@@ -365,20 +425,27 @@ if __name__ == "__main__":
             results = results[cols]
 
             # For the dset colum, delete "_vocab"
-            results["dset"] = results["dset"].apply(lambda x: x.replace("_vocab", "") if not pd.isna(x) else x)
+            results["dset"] = results["dset"].apply(
+                lambda x: x.replace("_vocab", "") if not pd.isna(x) else x
+            )
 
             # Iterate through the data and replace _ with \_
-            #results = results.apply(lambda x: x.str.replace("_", r"\_") if x.dtype == "object" else x)
+            # results = results.apply(lambda x: x.str.replace("_", r"\_") if x.dtype == "object" else x)
 
             # For each numerical column, bold the best value and round to 3 decimal places
             for col in results.columns:
                 if is_numeric_dtype(results[col]):
+
                     def test(x, col):
                         fmt = f"{x:.3f}"
                         # Test if the value is the best to 3 decimal places
                         if np.round(x, 3) == np.round(results[col].max(), 3):
                             return r"\textbf{" + fmt + "}"
-                        elif "_diff" in col and abs(np.round(x, 3)) == abs(np.round(results[col], 3)).min():
+                        elif (
+                            "_diff" in col
+                            and abs(np.round(x, 3))
+                            == abs(np.round(results[col], 3)).min()
+                        ):
                             # There's a few perfectly random results, so we need to use results
                             return r"\textbf{" + fmt + "}"
                         else:
@@ -388,6 +455,7 @@ if __name__ == "__main__":
             # Replace the non-numeric columns with their nice names
             for col in results.columns:
                 if not is_numeric_dtype(results[col]):
+
                     def nice_name_ext(x):
                         if pd.isna(x):
                             return x
@@ -408,7 +476,9 @@ if __name__ == "__main__":
                     results[col] = results[col].apply(nice_name_ext)
 
             # Sort
-            results = results.sort_values(by=["feature_selector", "scorer", "model", "dset"])
+            results = results.sort_values(
+                by=["feature_selector", "scorer", "model", "dset"]
+            )
 
             #  # Convert to MultiIndex
             index = pd.MultiIndex.from_tuples(
@@ -417,27 +487,35 @@ if __name__ == "__main__":
             results.columns = index
 
             # Drop the accuracy multiindex, not enough space
-            results = results.drop(columns=[nice_name_map("accuracy_score_test", latex=True),
-                                            nice_name_map("accuracy_score_train", latex=True),
-                                            nice_name_map("accuracy_score_diff", latex=True)])
+            results = results.drop(
+                columns=[
+                    nice_name_map("accuracy_score_test", latex=True),
+                    nice_name_map("accuracy_score_train", latex=True),
+                    nice_name_map("accuracy_score_diff", latex=True),
+                ]
+            )
 
-            out = results.to_latex(index=False,
-                                   escape=False,
-                                   bold_rows=False,
-                                   label=f"tab:{classifier}",
-                                   na_rep="-",
-                                   multicolumn=True,
-                                   multicolumn_format="|l|",
-                                   column_format="|" + "|".join(["l"] * results.shape[1]) + "|",
-                                   caption=f"All results for {classifier}.",
-                                   longtable=True,
-                                   )
+            out = results.to_latex(
+                index=False,
+                escape=False,
+                bold_rows=False,
+                label=f"tab:{classifier}",
+                na_rep="-",
+                multicolumn=True,
+                multicolumn_format="|l|",
+                column_format="|" + "|".join(["l"] * results.shape[1]) + "|",
+                caption=f"All results for {classifier}.",
+                longtable=True,
+            )
             out = out.replace("{} &", "")
             out = out.replace(r"\\", r"\\ \hline")
-            out = out.replace(r"\toprule", r"\hline").replace(r"\midrule", r"\hline").replace(r"\bottomrule", r"\hline")
+            out = (
+                out.replace(r"\toprule", r"\hline")
+                .replace(r"\midrule", r"\hline")
+                .replace(r"\bottomrule", r"\hline")
+            )
             out = out.replace(r"\begin{table}", r"\begin{table}[H]")
             print(out)
-
 
         for classifier in classifiers:
             print(r"\subsection{" + classifier + "}")

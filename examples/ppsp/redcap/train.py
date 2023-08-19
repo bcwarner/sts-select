@@ -1,65 +1,53 @@
 import argparse
 import itertools
+import os
 import pickle
+import re
 import sys
+import warnings
 from collections import defaultdict
 from datetime import datetime
 from operator import itemgetter
 
+import numpy as np
 import pandas as pd
-import os
-import warnings
-
 import scipy
-from joblib import Parallel, delayed
-from pandas.api.types import (
-    is_string_dtype,
-    is_numeric_dtype,
-    is_datetime64_any_dtype,
-)
-from pandas.errors import ParserError
 import torch
-
+from joblib import Parallel, delayed
+from pandas.api.types import (is_datetime64_any_dtype, is_numeric_dtype,
+                              is_string_dtype)
+from pandas.errors import ParserError
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning
-from sklearn.feature_selection import (
-    SelectFromModel,
-    RFE,
-)
-from sklearn.model_selection import (
-    GridSearchCV,
-    train_test_split,
-    StratifiedKFold,
-    cross_validate,
-)
+from sklearn.feature_selection import RFE, SelectFromModel
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import (accuracy_score, average_precision_score,
+                             roc_auc_score)
+from sklearn.model_selection import (GridSearchCV, StratifiedKFold,
+                                     cross_validate, train_test_split)
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
-from sklearn.preprocessing import MinMaxScaler, Normalizer
-from sklearn.impute import SimpleImputer
-from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score
-import numpy as np
-from tabulate import tabulate
-import re
-
+from sklearn.preprocessing import (FunctionTransformer, MinMaxScaler,
+                                   Normalizer, OneHotEncoder)
 from sklearn.svm import LinearSVC
+from tabulate import tabulate
 from xgboost import XGBClassifier
 
 # Add the current working directory's parent to the path above to import the neighboring packages
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from redcap_sts_scorers.train import dset_options, model_options, model_path, GEN_VOCAB_NAME
-
-from sts_select.mrmr import MRMRBase
-from sts_select.target_sel import StdDevSelector, TopNSelector
-from sts_select.scoring import MIScorer, BaseSTSScorer, LinearScorer, SentenceTransformerScorer, GensimScorer
-from sts_select.gensim import FastTextModel, SkipgramModel
-
 import matplotlib.pyplot as plt
-
+from redcap_sts_scorers.train import (GEN_VOCAB_NAME, dset_options,
+                                      model_options, model_path)
 from skrebate import ReliefF
+
+from sts_select.gensim import FastTextModel, SkipgramModel
+from sts_select.mrmr import MRMRBase
+from sts_select.scoring import (BaseSTSScorer, GensimScorer, LinearScorer,
+                                MIScorer, SentenceTransformerScorer)
+from sts_select.target_sel import StdDevSelector, TopNSelector
 
 pd.set_option("display.max_columns", None)
 redcap = None
@@ -382,7 +370,7 @@ def train_eval(df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}
 
         # Just pick an estimator for now:
         cv = score_res["estimator"][0]
-        cv_est = cv # Untested and not used
+        cv_est = cv  # Untested and not used
     else:
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=RANDOM_STATE
@@ -408,27 +396,28 @@ def train_eval(df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}
 
     best_feats = None
     if isinstance(cv_est.steps[1][1], MRMRBase):
-        best_feats = [
-            X_questions[y]
-            for y in cv_est.steps[1][1].sel_features
-        ]
+        best_feats = [X_questions[y] for y in cv_est.steps[1][1].sel_features]
 
     feat_importance = None
     if args.feature_importance:
         import shap
 
         print("Getting SHAP values")
+
         def f(x_):
-            return cv.predict_proba(
-                pd.DataFrame(x_, columns=X.columns)
-            )
+            return cv.predict_proba(pd.DataFrame(x_, columns=X.columns))
+
         explainer = shap.KernelExplainer(f, X_train, seed=RANDOM_STATE)
         shap_values = explainer(X_test)
         shap_abs_values = np.mean(np.abs(shap_values.values), axis=0)
         # Test on entire set since it's small.
 
         # Get mapping from questions to order picked.
-        if type(cv_est.named_steps["feature_selector"]) in [MRMRBase, StdDevSelector, TopNSelector]:
+        if type(cv_est.named_steps["feature_selector"]) in [
+            MRMRBase,
+            StdDevSelector,
+            TopNSelector,
+        ]:
             fs = cv_est.named_steps["feature_selector"]
             # Map X_question_idx to occurrence in sel_features
             X_question_order, X_question_sel = zip(
@@ -461,7 +450,12 @@ def train_eval(df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}
                 f"{scores[2]} Mean": s3,
             }
 
-    return out, (cv.best_params_ if type(cv_est) == GridSearchCV else {}), best_feats, feat_importance
+    return (
+        out,
+        (cv.best_params_ if type(cv_est) == GridSearchCV else {}),
+        best_feats,
+        feat_importance,
+    )
 
 
 def combine_elements(preprocessor, feature_selector, classifier):
@@ -475,19 +469,30 @@ def combine_elements(preprocessor, feature_selector, classifier):
 
     return pipe, parameters
 
+
 class ClinicalBERTSTSScorer(BaseSTSScorer):
     def __init__(self, X, y, X_names, y_names, cache=None, verbose=0):
-        super().__init__(X, y, X_names, y_names,
-                            cache=os.path.join(args.root_dir, STS_CACHE_FNAME),
-                            sts_function=lambda a, b: None,
-                            verbose=args.verbose)
+        super().__init__(
+            X,
+            y,
+            X_names,
+            y_names,
+            cache=os.path.join(args.root_dir, STS_CACHE_FNAME),
+            sts_function=lambda a, b: None,
+            verbose=args.verbose,
+        )
         # Empty function here because BERT will be loaded only if needed.
 
     def score(self, X, y):
-        if self.sts_function("", "") is None: # Hack to determine if it is an uninitalized fn.
+        if (
+            self.sts_function("", "") is None
+        ):  # Hack to determine if it is an uninitalized fn.
             from semantic_text_similarity.models import ClinicalBertSimilarity
+
             self.bert = ClinicalBertSimilarity(device="cuda", batch_size=10)
-            self.sts_function = lambda a, b: self.bert.predict([(a, b)], return_predictions=True)[0]
+            self.sts_function = lambda a, b: self.bert.predict(
+                [(a, b)], return_predictions=True
+            )[0]
         return super().score(X, y)
 
 
@@ -501,19 +506,30 @@ def compute_similarities(
     X = preprocessor.fit_transform(X)
     scorers = {}
 
-    scorers["MIScorer"] = MIScorer(X, y_truth,
-                                   random_state=RANDOM_STATE,
-                                   cache=os.path.join(args.root_dir, MI_CACHE_FNAME),
-                                   verbose=args.verbose)
+    scorers["MIScorer"] = MIScorer(
+        X,
+        y_truth,
+        random_state=RANDOM_STATE,
+        cache=os.path.join(args.root_dir, MI_CACHE_FNAME),
+        verbose=args.verbose,
+    )
 
-    scorers["STSScorer_ClinicalBERT_ext"] = ClinicalBERTSTSScorer(X, y_truth, X_questions, y_questions,
-                                                  cache=os.path.join(args.root_dir, STS_CACHE_FNAME),
-                                                 verbose=args.verbose)
+    scorers["STSScorer_ClinicalBERT_ext"] = ClinicalBERTSTSScorer(
+        X,
+        y_truth,
+        X_questions,
+        y_questions,
+        cache=os.path.join(args.root_dir, STS_CACHE_FNAME),
+        verbose=args.verbose,
+    )
 
-    scorers["LinearScorer_ClinicalBERT_ext"] = LinearScorer(X, y_truth,
-                                            scorers=[scorers["MIScorer"], scorers["STSScorer_ClinicalBERT_ext"]],
-                                            alpha=[1, 1],
-                                            verbose=args.verbose)
+    scorers["LinearScorer_ClinicalBERT_ext"] = LinearScorer(
+        X,
+        y_truth,
+        scorers=[scorers["MIScorer"], scorers["STSScorer_ClinicalBERT_ext"]],
+        alpha=[1, 1],
+        verbose=args.verbose,
+    )
 
     # Product of models and datasets for each possible BaseSTS and LinearScorer.
     for dset, model in itertools.product(dset_options, model_options):
@@ -523,24 +539,38 @@ def compute_similarities(
         if "other" in model:
             if dset != GEN_VOCAB_NAME:
                 continue
-            sts_scorer = GensimScorer(X, y_truth, X_questions, y_questions,
-                                                    model_path=model_path(dset, model),
-                                                    cache=os.path.join(args.root_dir, sts_cache_name),
-                                                    model_type=SkipgramModel if "Skipgram" in model else FastTextModel,
-                                                    # Note: this will break if we add more models.
-                                                    verbose=args.verbose)
+            sts_scorer = GensimScorer(
+                X,
+                y_truth,
+                X_questions,
+                y_questions,
+                model_path=model_path(dset, model),
+                cache=os.path.join(args.root_dir, sts_cache_name),
+                model_type=SkipgramModel if "Skipgram" in model else FastTextModel,
+                # Note: this will break if we add more models.
+                verbose=args.verbose,
+            )
         else:
-            sts_scorer = SentenceTransformerScorer(X, y_truth, X_questions, y_questions,
-                                                        model_path=model_path(dset, model),
-                                                        device="cuda",
-                                                        cache=os.path.join(args.root_dir, sts_cache_name),
-                                                        verbose=args.verbose)
+            sts_scorer = SentenceTransformerScorer(
+                X,
+                y_truth,
+                X_questions,
+                y_questions,
+                model_path=model_path(dset, model),
+                device="cuda",
+                cache=os.path.join(args.root_dir, sts_cache_name),
+                verbose=args.verbose,
+            )
 
         scorers[sts_name] = sts_scorer
         linear_name = f"LinearScorer_{model}_{dset}"
-        linear_scorer = LinearScorer(X, y_truth, scorers=[scorers["MIScorer"], sts_scorer],
-                                                alpha=[1, 1],
-                                                verbose=args.verbose)
+        linear_scorer = LinearScorer(
+            X,
+            y_truth,
+            scorers=[scorers["MIScorer"], sts_scorer],
+            alpha=[1, 1],
+            verbose=args.verbose,
+        )
         scorers[linear_name] = linear_scorer
 
     # Add the
@@ -595,6 +625,7 @@ def prepare_source_data():
 # ======= Note =========
 # The following functions were designed for an earlier version of the code, and do not work with the current version.
 # They also evaluate some experiments that we've left out for brevity.
+
 
 def eval_auroc_hyperparms(
     df_filtered=None,
@@ -843,6 +874,7 @@ def eval_base_train_time(
     """
     pass
 
+
 # =============================
 
 if __name__ == "__main__":
@@ -940,8 +972,13 @@ if __name__ == "__main__":
     )
     parser.add_argument("-n", "--n-jobs", default=1, action="store", type=int)
     # Default root-dir should correspond to the root of the git repo (i.e. contains feature_selectors, redcap, sts_scorers)
-    parser.add_argument("-r", "--root-dir", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                        , action="store", type=str)
+    parser.add_argument(
+        "-r",
+        "--root-dir",
+        default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        action="store",
+        type=str,
+    )
     parser.add_argument("--print_del_cols", default=False, action="store", type=bool)
     parser.add_argument("--sel_fs", default=None, action="store", type=str)
     parser.add_argument("--sel_class", default=None, action="store", type=str)
@@ -971,7 +1008,8 @@ if __name__ == "__main__":
         ),
         "SelectFromModel-LinearSVM": (
             SelectFromModel(
-                LinearSVC(C=1, dual=False, random_state=RANDOM_STATE), max_features=args.feature_num
+                LinearSVC(C=1, dual=False, random_state=RANDOM_STATE),
+                max_features=args.feature_num,
             ),
             {"feature_selector__estimator__C": np.logspace(-2, 0, 10)},
         ),
@@ -984,7 +1022,7 @@ if __name__ == "__main__":
         ),
         "ReliefF": (
             ReliefF(n_features_to_select=args.feature_num, n_jobs=1, n_neighbors=10),
-            {}
+            {},
         ),
     }
     for scorer in scorers.keys():
@@ -992,24 +1030,24 @@ if __name__ == "__main__":
             "feature_selector__n_features": [args.feature_num],
         }
         if "LinearScorer" in scorer:
-            hyperparam_dict["feature_selector__scorer__alpha[1]"] = np.logspace(-2, 2, 30)
+            hyperparam_dict["feature_selector__scorer__alpha[1]"] = np.logspace(
+                -2, 2, 30
+            )
         feature_selectors[f"MRMRBase_{scorer}"] = (
-            MRMRBase(
-                scorers[scorer]
-            ),
-            hyperparam_dict
+            MRMRBase(scorers[scorer]),
+            hyperparam_dict,
         )
         feature_selectors[f"TopNSelector_{scorer}"] = (
-            TopNSelector(
-                scorers[scorer]
-            ),
-            hyperparam_dict
+            TopNSelector(scorers[scorer]),
+            hyperparam_dict,
         )
         feature_selectors[f"StdDevSelector_{scorer}"] = (
-            StdDevSelector(
-                scorers[scorer]
-            ),
-            {"feature_selector__std_dev": [0.3 if ("Skipgram" in scorer or "FastText" in scorer) else 1]}
+            StdDevSelector(scorers[scorer]),
+            {
+                "feature_selector__std_dev": [
+                    0.3 if ("Skipgram" in scorer or "FastText" in scorer) else 1
+                ]
+            },
         )
 
     # Print list of valid FS
@@ -1028,9 +1066,10 @@ if __name__ == "__main__":
                 random_state=RANDOM_STATE,
                 verbosity=max(args.verbose - 1, 0),
             ),
-            {"classifier__n_estimators": [2],
+            {
+                "classifier__n_estimators": [2],
                 "classifier__max_leaves": [2],
-            }
+            },
         ),
         "LinearSVM": (
             LinearSVC(random_state=RANDOM_STATE, dual=True),
@@ -1148,7 +1187,13 @@ if __name__ == "__main__":
                     break
 
         # Resort columns so that the feature_selector, scorer, model, and dset columns are first
-        results = [{**{s: ("" if s not in result else result[s]) for s in sub_columns}, **result} for result in results]
+        results = [
+            {
+                **{s: ("" if s not in result else result[s]) for s in sub_columns},
+                **result,
+            }
+            for result in results
+        ]
         results_df = pd.DataFrame(results)
 
         # Include the sel_fs and sel_class in the filename
@@ -1161,5 +1206,3 @@ if __name__ == "__main__":
             sheet_name="Results",
             index=False,
         )
-
-

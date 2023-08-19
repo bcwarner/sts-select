@@ -4,13 +4,11 @@ import pickle
 import sys
 from collections import defaultdict
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import tikzplotlib
 from tqdm import tqdm
-
-
-from train import FIGURE_DIR, RESULTS_DIR, STS_CACHE_FNAME, MI_CACHE_FNAME
+from train import FIGURE_DIR, MI_CACHE_FNAME, RESULTS_DIR, STS_CACHE_FNAME
 
 GLOBAL_COLORMAP = "viridis"
 
@@ -130,7 +128,9 @@ def plot_sts_mi_heatmap(heatmap_args):
         a1.set_xlabel("Feature Index")
         a1.set_ylabel("Feature Index")
 
-        a0.imshow(X_y_pairings_np, cmap=GLOBAL_COLORMAP, aspect="auto", interpolation=None)
+        a0.imshow(
+            X_y_pairings_np, cmap=GLOBAL_COLORMAP, aspect="auto", interpolation=None
+        )
         a0.set_title(f"{title} X-y Pairings")
 
         # Turn off y ticks
@@ -152,8 +152,12 @@ def plot_sts_mi_heatmap(heatmap_args):
     # Save with
     tikzplotlib_fix_ncols(plt.gcf())
     # Delete all conents in the sts_pairings directory
-    for file in os.listdir(os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "sts_pairings")):
-        os.remove(os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "sts_pairings", file))
+    for file in os.listdir(
+        os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "sts_pairings")
+    ):
+        os.remove(
+            os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "sts_pairings", file)
+        )
 
     tikzplotlib.save(
         os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "MI_pairings.tex"),
@@ -174,11 +178,18 @@ def plot_sts_mi_heatmap(heatmap_args):
 
         heatmap_name = heatmap.split("/")[-1].replace(".pkl", "")
         plot_pairings(STS_X_pairings, STS_X_y_pairings, f"STS")
-        plt.savefig(os.path.join(os.path.curdir, FIGURE_DIR, f"STS_{heatmap_name}_pairings.pdf"), dpi=300)
+        plt.savefig(
+            os.path.join(
+                os.path.curdir, FIGURE_DIR, f"STS_{heatmap_name}_pairings.pdf"
+            ),
+            dpi=300,
+        )
         # Save with
         tikzplotlib_fix_ncols(plt.gcf())
         tikzplotlib.save(
-            os.path.join(os.path.curdir, "redcap", FIGURE_DIR, f"STS_{heatmap_name}_pairings.tex"),
+            os.path.join(
+                os.path.curdir, "redcap", FIGURE_DIR, f"STS_{heatmap_name}_pairings.tex"
+            ),
             tex_relative_path_to_data="sts_pairings/",
             dpi=300,
         )
@@ -240,7 +251,7 @@ if __name__ == "__main__":
     for fname in tqdm(new_figs, desc="Plotting Figures"):
         if ".dat" not in fname:
             continue
-        
+
         data, param_dict = pickle.load(
             open(os.path.join(os.path.curdir, RESULTS_DIR, fname), "rb")
         )
@@ -270,6 +281,3 @@ if __name__ == "__main__":
                 tex_relative_path_to_data="figures/",
                 dpi=300,
             )
-
-
-

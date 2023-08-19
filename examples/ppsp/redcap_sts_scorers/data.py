@@ -12,6 +12,7 @@ CLINICAL_VOCAB_NAME = "clinical_vocab"
 GEN_VOCAB_NAME = "gen_vocab"
 COMBINED_VOCAB_NAME = "combined_vocab"
 
+
 def load_huggingface(dset_name, sent1_key, sent2_key, score_key, score_max):
     """
     Loads a dataset from HuggingFace.
@@ -24,7 +25,11 @@ def load_huggingface(dset_name, sent1_key, sent2_key, score_key, score_max):
         dset = ds.load_dataset(dset_name, opt, split="train")
     else:
         dset = ds.load_dataset(dset_name, split="train")
-    mapper = lambda x: {"sent1": x[sent1_key], "sent2": x[sent2_key], "score": np.float32(x[score_key] / score_max)}
+    mapper = lambda x: {
+        "sent1": x[sent1_key],
+        "sent2": x[sent2_key],
+        "score": np.float32(x[score_key] / score_max),
+    }
     dset = dset.map(mapper, remove_columns=dset.column_names)
     # Drop all columns except for sent1, sent2, and score
     return dset
@@ -54,19 +59,23 @@ if __name__ == "__main__":
         huggingface_loaded_gen_data[k] = load_huggingface(k, *v)
 
     # Load all custom datasets
-    custom_clin_datasets = {
-    }
-    custom_gen_datasets = {
-    }
+    custom_clin_datasets = {}
+    custom_gen_datasets = {}
 
     print("==== Concatenating Datasets ====")
     # Merge all datasets into three variants:
     # - General vocab
     print("General Vocab")
-    gen_vocab = ds.concatenate_datasets([v for k, v in huggingface_loaded_gen_data.items()] + [v for k, v in custom_gen_datasets.items()])
+    gen_vocab = ds.concatenate_datasets(
+        [v for k, v in huggingface_loaded_gen_data.items()]
+        + [v for k, v in custom_gen_datasets.items()]
+    )
     # - Clinical vocab
     print("Clinical Vocab")
-    clin_vocab = ds.concatenate_datasets([v for k, v in huggingface_loaded_clin_data.items()] + [v for k, v in custom_clin_datasets.items()])
+    clin_vocab = ds.concatenate_datasets(
+        [v for k, v in huggingface_loaded_clin_data.items()]
+        + [v for k, v in custom_clin_datasets.items()]
+    )
     # - General + clinical vocab
     print("General + Clinical Vocab")
     gen_clin_vocab = ds.concatenate_datasets([gen_vocab, clin_vocab])
