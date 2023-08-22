@@ -44,5 +44,12 @@ We provide a refactored version of our code used in our findings in the `example
 If you use this code in your research, please cite the following preprint:
 
 ```
-[tbd]
+@misc{warner2023utilizing,
+      title={Utilizing Semantic Textual Similarity for Clinical Survey Data Feature Selection}, 
+      author={Benjamin C. Warner and Ziqi Xu and Simon Haroutounian and Thomas Kannampallil and Chenyang Lu},
+      year={2023},
+      eprint={2308.09892},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
 ```
