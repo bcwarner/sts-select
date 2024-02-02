@@ -1,5 +1,8 @@
 # `sts-select`
-
+[![PyPI - Version](https://img.shields.io/pypi/v/sts-select)](https://pypi.org/project/sts-select/)
+[![Hugging Face](https://img.shields.io/badge/🤗-Models-yellow)](https://huggingface.co/sts-select)
+[![arXiv](https://img.shields.io/badge/arXiv-2308.09892-b31b1b.svg)](https://arxiv.org/abs/2308.09892)
+[![PyPI - License](https://img.shields.io/pypi/l/sts-select)](https://pypi.org/project/sts-select/)
 ## Overview
 Small datasets often require feature selection to ensure generalizability, but such feature selection methods rely on the information provided in the dataset, which may not be enough to make good selections. An underutilized source of information is the similarity between the feature and target names, and we find that utilizing feature names in the selection process can sometimes improve the performance of feature selection methods. This is probably due to the fact that statistical measures of feature and target relationships are often noisy/incomplete, and the feature/target names can provide a more consistent measure of any relationship.
 
@@ -25,7 +28,8 @@ pipe = Pipeline([
             y,
             X_names=X_names,
             y_names=y_names,
-            model_path="your/model" # Should already be fine-tuned.  
+            model_path="bcwarner/PubMedBERT-base-uncased-sts-combined", # Example model. 
+            cache="your/cache/path", # Location to save STS scores for repeated runs.
         ), 
         n_features=20
     )),
