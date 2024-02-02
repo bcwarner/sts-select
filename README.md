@@ -1,6 +1,6 @@
 # `sts-select`
 [![PyPI - Version](https://img.shields.io/pypi/v/sts-select)](https://pypi.org/project/sts-select/)
-[![Hugging Face](https://img.shields.io/badge/🤗-Models-yellow)](https://huggingface.co/sts-select)
+[![Hugging Face](https://img.shields.io/badge/🤗-Models-yellow)](https://huggingface.co/papers/2308.09892)
 [![arXiv](https://img.shields.io/badge/arXiv-2308.09892-b31b1b.svg)](https://arxiv.org/abs/2308.09892)
 [![PyPI - License](https://img.shields.io/pypi/l/sts-select)](https://pypi.org/project/sts-select/)
 ## Overview
