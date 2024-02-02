@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import Dict, Tuple
 
 import tqdm
+import torch
 
 
 class BaseScorer:
@@ -277,9 +278,11 @@ class SentenceTransformerScorer(BaseSTSScorer):
         if self.sts_function("", "") is None:
             from sentence_transformers import SentenceTransformer, util
 
-            self.model = SentenceTransformer(self.model_path, device="cuda")
+            self.model = SentenceTransformer(self.model_path,
+                                             device="cuda" if torch.cuda.is_available() else "cpu")
             self.sts_function = lambda x1, x2: util.pytorch_cos_sim(
-                self.model.encode(x1), self.model.encode(x2)
+                self.model.encode(x1, show_progress_bar=self.verbose > 2),
+                self.model.encode(x2, show_progress_bar=self.verbose > 2)
             ).item()
         return super().score(X, y)
 

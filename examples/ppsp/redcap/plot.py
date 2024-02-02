@@ -6,9 +6,10 @@ from collections import defaultdict
 
 import matplotlib.pyplot as plt
 import numpy as np
-import tikzplotlib
 from tqdm import tqdm
 from train import FIGURE_DIR, MI_CACHE_FNAME, RESULTS_DIR, STS_CACHE_FNAME
+from tabtex import nice_name_map
+import matplotlib
 
 GLOBAL_COLORMAP = "viridis"
 
@@ -70,7 +71,7 @@ def two_param(data, param_dict):
         )
 
 
-def line_param(data, param_dict):
+def line_param(data, param_dict, color_idx):
     # Wacky but I don't want to regen plots.
     try:
         xs = [x for x in zip(*data)]
@@ -78,12 +79,26 @@ def line_param(data, param_dict):
     except Exception as e:
         xs = [data]
     for idx, x in enumerate(xs):
+        label = "Test" if idx == 0 else "Train"
+        label += " (" + ("STS" if param_dict["scorer"] == "SentenceTransformerScorer" else "MI") + ")"
+        # Select values of x indexed at 1-20
+        start_x = param_dict["x"].index(1)
+        end_x = param_dict["x"].index(21)
+
+        # Pick a color from the colormap
+        color = matplotlib.colors.to_rgb(plt.rcParams["axes.prop_cycle"].by_key()["color"][color_idx])
+        # Make the test data slightly darker
+        if idx == 1:
+            color = tuple([x * 0.8 for x in color])
+
         plt.plot(
-            param_dict["x"], x, marker="o", label=("Test" if idx == 0 else "Train")
+            param_dict["x"][start_x:end_x], x[start_x:end_x], marker=".", label=label, color=color
         )
-    plt.title(
-        f"{param_dict['au_name']} vs. {param_dict['x_name']} with {param_dict['model_name']}, {param_dict['feature_selector']}"
-    )
+
+    if "model_params" in param_dict:
+        model_name_full = param_dict["model_path"].split("/")
+        model_vocab = nice_name_map(model_name_full[-1])
+        model_name = nice_name_map(model_name_full[-2])
     if len(xs) > 1:
         plt.legend()
     plt.xlabel(f"{param_dict['x_name']}")
@@ -123,13 +138,17 @@ def plot_sts_mi_heatmap(heatmap_args):
         f, (a1, a0, ab) = plt.subplots(1, 3, gridspec_kw={"width_ratios": [10, 2, 1]})
         f.set_size_inches(7, 4)
 
-        a1.imshow(X_pairings_np, cmap=GLOBAL_COLORMAP, aspect="auto")
+        vmin = 0
+        vmax = max(np.max(X_pairings_np), np.max(X_y_pairings_np))
+
+        a1.imshow(X_pairings_np, cmap=GLOBAL_COLORMAP, aspect="auto", vmin=vmin, vmax=vmax)
         a1.set_title(f"{title} X-X Pairings")
         a1.set_xlabel("Feature Index")
         a1.set_ylabel("Feature Index")
 
         a0.imshow(
-            X_y_pairings_np, cmap=GLOBAL_COLORMAP, aspect="auto", interpolation=None
+            X_y_pairings_np, cmap=GLOBAL_COLORMAP, aspect="auto", interpolation=None, vmin=vmin,
+            vmax=vmax
         )
         a0.set_title(f"{title} X-y Pairings")
 
@@ -149,8 +168,6 @@ def plot_sts_mi_heatmap(heatmap_args):
     plt.clf()
     plot_pairings(MI_X_pairings, MI_X_y_pairings, "MI")
     plt.savefig(os.path.join(os.path.curdir, FIGURE_DIR, "MI_pairings.pdf"), dpi=300)
-    # Save with
-    tikzplotlib_fix_ncols(plt.gcf())
     # Delete all conents in the sts_pairings directory
     for file in os.listdir(
         os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "sts_pairings")
@@ -158,12 +175,6 @@ def plot_sts_mi_heatmap(heatmap_args):
         os.remove(
             os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "sts_pairings", file)
         )
-
-    tikzplotlib.save(
-        os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "MI_pairings.tex"),
-        tex_relative_path_to_data="sts_pairings/",
-        dpi=300,
-    )
     plt.clf()
     heatmaps = []
     if heatmap_args is not None:
@@ -184,15 +195,6 @@ def plot_sts_mi_heatmap(heatmap_args):
             ),
             dpi=300,
         )
-        # Save with
-        tikzplotlib_fix_ncols(plt.gcf())
-        tikzplotlib.save(
-            os.path.join(
-                os.path.curdir, "redcap", FIGURE_DIR, f"STS_{heatmap_name}_pairings.tex"
-            ),
-            tex_relative_path_to_data="sts_pairings/",
-            dpi=300,
-        )
 
 
 def swap_x(fn):
@@ -202,16 +204,6 @@ def swap_x(fn):
         p_d["x_name"], p_d["y_name"] = p_d["y_name"], p_d["x_name"]
     with open(fn, "wb") as f:
         pickle.dump((s, p_d), f)
-
-
-def tikzplotlib_fix_ncols(obj):
-    """
-    workaround for matplotlib 3.6 renamed legend's _ncol to _ncols, which breaks tikzplotlib
-    """
-    if hasattr(obj, "_ncols"):
-        obj._ncol = obj._ncols
-    for child in obj.get_children():
-        tikzplotlib_fix_ncols(child)
 
 
 if __name__ == "__main__":
@@ -248,6 +240,7 @@ if __name__ == "__main__":
 
     results = os.listdir(os.path.join(os.path.curdir, RESULTS_DIR))
     new_figs = results
+    score_map = defaultdict(list)
     for fname in tqdm(new_figs, desc="Plotting Figures"):
         if ".dat" not in fname:
             continue
@@ -256,28 +249,18 @@ if __name__ == "__main__":
             open(os.path.join(os.path.curdir, RESULTS_DIR, fname), "rb")
         )
         param_dict = defaultdict(str, param_dict)
+        score_map[param_dict["au_name"]].append((data, param_dict))
+    # Plot the results
+    for au_name, items in score_map.items():
+        # Plot the results for each AU
+        plt.clf()
+        plt.title(f"{au_name} vs. N")
+        for idx, (data, param_dict) in enumerate(items):
+            if param_dict["type"] == "au_map":
+                two_param(data, param_dict)
+            if param_dict["type"] == "au_n_line":
+                line_param(data, param_dict, idx)
 
-        plt.clf()  # Clear figure
-
-        # Pick
-        if param_dict["type"] == "au_map":
-            two_param(data, param_dict)
-        if param_dict["type"] == "au_n_line":
-            line_param(data, param_dict)
-
-        # Save
-        plt.savefig(
-            os.path.join(os.path.curdir, FIGURE_DIR, fname.replace(".dat", ".pdf")),
-            dpi=300,
-        )
-
-        if args.tikz:
-            # Taken from a tikzplotlib GitHub issue #557
-
-            tikzplotlib_fix_ncols(plt.gcf())
-
-            tikzplotlib.save(
-                os.path.join(os.path.curdir, FIGURE_DIR, fname.replace(".dat", ".tex")),
-                tex_relative_path_to_data="figures/",
-                dpi=300,
+            plt.savefig(
+                os.path.join(os.path.curdir, FIGURE_DIR, f"{au_name}-N.pdf"), dpi=300
             )

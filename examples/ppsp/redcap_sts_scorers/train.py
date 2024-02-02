@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sentence_transformers
-import tikzplotlib
 import torch
 import transformers as tr
 from sentence_transformers import (LoggingHandler, SentencesDataset,
@@ -28,7 +27,7 @@ from tqdm import tqdm
 
 sys.path.append(os.path.dirname(__file__))
 from data import CLINICAL_VOCAB_NAME, COMBINED_VOCAB_NAME, GEN_VOCAB_NAME
-from gensim import FastTextModel, SkipgramModel
+from sts_select.gensim import FastTextModel, SkipgramModel
 
 RANDOM_STATE = 424989
 
@@ -43,10 +42,10 @@ old_env_vars = {}
 def set_env_vars():
     # Set $TORCH_HOME to a torch subdirectory, and $TRANSFORMERS_CACHE to a transformers subdirectory
     global old_env_vars
-    if not os.path.exists(os.path.join(os.path.dirname(__file__), "torch")):
-        os.mkdir(os.path.join(os.path.dirname(__file__), "torch"))
+    if not os.path.exists(os.path.join(os.path.dirname(__file__), "torch_saved")):
+        os.mkdir(os.path.join(os.path.dirname(__file__), "torch_saved"))
     old_env_vars["TORCH_HOME"] = os.environ.get("TORCH_HOME")
-    os.environ["TORCH_HOME"] = os.path.join(os.path.dirname(__file__), "torch")
+    os.environ["TORCH_HOME"] = os.path.join(os.path.dirname(__file__), "torch_saved")
 
     if not os.environ.get("TRANSFORMERS_CACHE"):
         if not os.path.exists(os.path.join(os.path.dirname(__file__), "transformers")):
@@ -70,20 +69,19 @@ def model_path(dset_name, model_name):
 
 
 dset_options = [CLINICAL_VOCAB_NAME, GEN_VOCAB_NAME, COMBINED_VOCAB_NAME]
-model_options = [
-    "bert-base-uncased",  # General LLMs
-    # "allenai/scibert_scivocab_uncased",
-    "sentence-transformers/all-MiniLM-L12-v2",
-    # "sentence-transformers/all-mpnet-base-v2",
-    # "sentence-transformers/all-distilroberta-v1",
-    # Clinical LLMs
-    "emilyalsentzer/Bio_ClinicalBERT",
-    "allenai/biomed_roberta_base",
-    "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext",
-    # "microsoft/biogpt", Unable to reserve a card big enough for this
-    # "AshtonIsNotHere/GatorTron-OG",
-    "other/Skipgram",
-    "other/FastText",
+model_options = [#"bert-base-uncased", # General LLMs
+                 #"allenai/scibert_scivocab_uncased",
+                 #"sentence-transformers/all-MiniLM-L12-v2",
+                 #"sentence-transformers/all-mpnet-base-v2",
+                 #"sentence-transformers/all-distilroberta-v1",
+                 # Clinical LLMs
+                 #"emilyalsentzer/Bio_ClinicalBERT",
+                 #"allenai/biomed_roberta_base",
+                 "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext",
+                 "microsoft/biogpt",
+                 "UFNLP/gatortron-base",
+                 #"other/Skipgram",
+                 #"other/FastText",
 ]
 
 if __name__ == "__main__":
@@ -133,6 +131,8 @@ if __name__ == "__main__":
                 train_data_mapped, shuffle=True, batch_size=args.batch_size
             )
             train_loss = losses.CosineSimilarityLoss(model)
+            if hasattr(model, "pad_token") and model.pad_token is None:
+                model.tokenizer.pad_token = model.tokenizer.eos_token
         else:
             if dset_name != GEN_VOCAB_NAME:
                 # Only do the general vocab. Full sentences do not appear in the clinical set and loss is questionable.

@@ -627,15 +627,10 @@ def prepare_source_data():
 # They also evaluate some experiments that we've left out for brevity.
 
 
-def eval_auroc_hyperparms(
+def eval_auroc_hyperparams(
     df_filtered=None,
     pipe=None,
-    y_questions=None,
-    X_questions=None,
-    MI_X_similarities=None,
-    MI_X_y_similarities=None,
-    STS_X_similarities=None,
-    STS_X_y_similarities=None,
+    scorers=None,
     parameters=None,
 ):
     """
@@ -644,15 +639,13 @@ def eval_auroc_hyperparms(
     """
 
     feature_selector = pipe.named_steps["feature_selector"]
+    scorer = feature_selector.scorer
     classifier = pipe.named_steps["classifier"]
     model_name = type(classifier).__name__
-    if not isinstance(feature_selector, MRMRBase):
-        print("=== Needs an mRMR pipeline! ====")
-        sys.exit(0)
 
     # Anymore than quarter is probably overkill.
-    N_rng = [x for x in range(0, len(X_questions) // 4)]
-    a_rng = [1] if type(feature_selector) != MRMRCombined else np.linspace(0, 2, 50)
+    N_rng = [x for x in range(1, len(X_questions) // 7)]
+    a_rng = [1] if type(scorer) != LinearScorer else np.linspace(0, 1, 50)
 
     auroc_res_test = {}
     auroc_res_train = {}
@@ -662,10 +655,10 @@ def eval_auroc_hyperparms(
     def eval_params(N, alpha):
         params = parameters if parameters is not None else {}
         params["feature_selector__n_features"] = [N]
-        if type(feature_selector) == MRMRCombined:
+        if isinstance(scorer, LinearScorer):
             params["feature_selector__alpha"] = [alpha]
         te_results, _, _, _ = train_eval(
-            df_filtered, pipe, X_questions=X_questions, parameters=params
+            df_filtered, pipe, X_questions=scorer.X_names, parameters=params
         )
         return te_results
 
@@ -681,7 +674,7 @@ def eval_auroc_hyperparms(
         auprc_res_train[pms] = r["average_precision_score_train"]
 
     # One param => curve
-    if type(feature_selector) != MRMRCombined:
+    if type(scorer) != LinearScorer:
         auroc_line = [
             (auroc_res_test[N, a_rng[0]], auroc_res_train[N, a_rng[0]]) for N in N_rng
         ]
@@ -695,19 +688,28 @@ def eval_auroc_hyperparms(
             "type": "au_n_line",
             "model_name": model_name,
             "feature_selector": type(feature_selector).__name__,
+            "scorer": type(scorer).__name__,
         }
+        if type(scorer) == SentenceTransformerScorer:
+            params["model_path"] = scorer.model_path
+
+        fn = f"{model_name}-{type(feature_selector).__name__}-{type(scorer).__name__}"
+        if type(scorer) == SentenceTransformerScorer:
+            fn += f"-{scorer.model_path.replace('/', '-')[-25:]}"
 
         dump_result(
             auroc_line,
             {**params, **{"au_name": "AUROC"}},
-            f"auroc-{model_name}-{type(feature_selector).__name__}.dat",
+            f"auroc-{fn}.dat",
         )
         dump_result(
             auprc_line,
             {**params, **{"au_name": "AUPRC"}},
-            f"auprc-{model_name}-{type(feature_selector).__name__}.dat",
+            f"auprc-{fn}.dat",
         )
     else:
+        # Old section, not including for brevity.
+
         auroc_res_test_np = np.array(
             [auroc_res_test[N, a] for N, a in itertools.product(N_rng, a_rng)]
         ).reshape((len(N_rng), len(a_rng)))
@@ -737,19 +739,19 @@ def eval_auroc_hyperparms(
         dump_result(
             auroc_grid,
             {**params, **{"au_name": "AUROC"}},
-            f"auroc-{model_name}-{type(feature_selector).__name__}.dat",
+            f"auroc-{model_name}-{type(feature_selector).__name__}-{type(scorer).__name__}.dat",
         )
         dump_result(
             auprc_grid,
             {**params, **{"au_name": "AUPRC"}},
-            f"auprc-{model_name}-{type(feature_selector).__name__}.dat",
+            f"auprc-{model_name}-{type(feature_selector).__name__}-{type(scorer).__name__}.dat",
         )
 
     # Two params => Heatmap and curve
 
     print("Done!")
-    if type(feature_selector) == MRMRCombined:
-        sys.exit(0)
+    # Some bug that prevents exiting.
+    sys.exit(0)
 
 
 def eval_mi_embeddings_correlation(

@@ -2,20 +2,23 @@
 import warnings
 
 import numpy as np
+from sklearn.base import BaseEstimator
+from tqdm import tqdm
 
 from .scoring import BaseScorer
 
 
-class StdDevSelector:
+class StdDevSelector(BaseEstimator):
     """
     Selects features based on the standard deviation of the score from the dataset max.
     From Lampos et al. (2017)
     """
 
-    def __init__(self, scorer: BaseScorer, std_dev: float = 1.0):
+    def __init__(self, scorer: BaseScorer, std_dev: float = 1.0, verbose: int = 0):
         self.scorer = scorer
         self.std_dev = std_dev
         self.sel_features = None
+        self.verbose = verbose
 
     def fit(self, X, y):
         """
@@ -26,7 +29,11 @@ class StdDevSelector:
         """
         # Calculate the distribution of the X-y scores over the range of X averaged for y.
         scores = np.zeros(self.scorer.X_n)
-        for x in range(self.scorer.X_n):
+        iterator_x = range(self.scorer.X_n)
+        if self.verbose > 0:
+            iterator_x = tqdm(iterator_x)
+
+        for x in iterator_x:
             scores[x] = np.mean(
                 [self.scorer.X_y_score(x, yi) for yi in range(self.scorer.y_n)]
             )
@@ -58,11 +65,12 @@ class StdDevSelector:
             setattr(self, pk, pv)
 
 
-class TopNSelector:
-    def __init__(self, scorer: BaseScorer, n_features: int = 30):
+class TopNSelector(BaseEstimator):
+    def __init__(self, scorer: BaseScorer, n_features: int = 30, verbose: int = 0):
         self.scorer = scorer
         self.n_features = n_features
         self.sel_features = None
+        self.verbose = verbose
 
     def fit(self, X, y):
         """
@@ -73,7 +81,10 @@ class TopNSelector:
         """
         # Calculate the distribution of the X-y scores over the range of X averaged for y.
         scores = np.zeros(self.scorer.X_n)
-        for x in range(self.scorer.X_n):
+        iterator_x = range(self.scorer.X_n)
+        if self.verbose > 0:
+            iterator_x = tqdm(iterator_x)
+        for x in iterator_x:
             scores[x] = np.mean(
                 [self.scorer.X_y_score(x, yi) for yi in range(self.scorer.y_n)]
             )

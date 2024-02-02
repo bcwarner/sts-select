@@ -15,6 +15,63 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import tikzplotlib
 from redcap_sts_scorers.train import dset_options, model_options
 
+
+def nice_name_map(x, latex=False):
+    map = {
+        "feature_selector": "Feature Selector",
+        "scorer": "Scorer",
+        "model": "Scoring Model",
+        "dset": "Fine-Tuning Dataset" if not latex else "FT Dataset",
+        "roc_auc_score_test": "Test AUROC" if not latex else ("AUROC", "Test"),
+        "roc_auc_score_train": "Train AUROC" if not latex else ("AUROC", "Train"),
+        "roc_auc_score_diff": "Test - Train AUROC"
+        if not latex
+        else ("AUROC", r"$\Delta$"),
+        "average_precision_score_test": "Test AUPRC"
+        if not latex
+        else ("AUPRC", "Test"),
+        "average_precision_score_train": "Train AUPRC"
+        if not latex
+        else ("AUPRC", "Train"),
+        "average_precision_score_diff": "Test - Train AUPRC"
+        if not latex
+        else ("AUPRC", r"$\Delta$"),
+        "accuracy_score_test": "Test Accuracy"
+        if not latex
+        else ("Accuracy", "Test"),
+        "accuracy_score_train": "Train Accuracy"
+        if not latex
+        else ("Accuracy", "Train"),
+        "accuracy_score_diff": "Test - Train Accuracy"
+        if not latex
+        else ("Accuracy", r"$\Delta$"),
+        "clinical_vocab": "Clinical Pairs",
+        "clinical": "Clinical Pairs",
+        "gen_vocab": "General Pairs",
+        "gen": "General Pairs",
+        "ext": "ClinicalSTS",  # We combine this with the clinical vocab since it captures the same idea.
+        "combined_vocab": "Combined Pairs",
+        "combined": "Combined Pairs",
+        "classifier": "Classifier",
+        "ClinicalBERT": "emilyalsentzer/Bio_ClinicalBERT",
+        "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext": "microsoft/PubMedBERT",
+        "SelectFromModel-XGBoost": "SFM-XGBoost",
+        "SelectFromModel-LinearSVM": "SFM-LinearSVM",
+        "MRMRBase": "mRMR",
+        "TopNSelector": "Top N" if not latex else "Top $N$",
+        "StdDevSelector": "Std. Dev." if not latex else "Std. Dev.",
+        "MIScorer": "MI" if not latex else "MI",
+        "STSScorer": "STS" if not latex else "STS",
+        "LinearScorer": "MI & STS" if not latex else r"MI \& STS",
+    }
+    if x in map and isinstance(map[x], tuple):
+        return map[x]
+    elif x in map and latex and isinstance(map[x], str):
+        return ("Selection Hyperparameters", map[x])
+    elif x in map:
+        return map[x]
+    return x
+
 if __name__ == "__main__":
     # Parse arguments
     # - xlsx files to include
@@ -108,58 +165,7 @@ if __name__ == "__main__":
     if not os.path.exists(plots_dir):
         os.makedirs(plots_dir)
 
-    def nice_name_map(x, latex=False):
-        map = {
-            "feature_selector": "Feature Selector",
-            "scorer": "Scorer",
-            "model": "Scoring Model",
-            "dset": "Fine-Tuning Dataset" if not latex else "FT Dataset",
-            "roc_auc_score_test": "Test AUROC" if not latex else ("AUROC", "Test"),
-            "roc_auc_score_train": "Train AUROC" if not latex else ("AUROC", "Train"),
-            "roc_auc_score_diff": "Test - Train AUROC"
-            if not latex
-            else ("AUROC", r"$\Delta$"),
-            "average_precision_score_test": "Test AUPRC"
-            if not latex
-            else ("AUPRC", "Test"),
-            "average_precision_score_train": "Train AUPRC"
-            if not latex
-            else ("AUPRC", "Train"),
-            "average_precision_score_diff": "Test - Train AUPRC"
-            if not latex
-            else ("AUPRC", r"$\Delta$"),
-            "accuracy_score_test": "Test Accuracy"
-            if not latex
-            else ("Accuracy", "Test"),
-            "accuracy_score_train": "Train Accuracy"
-            if not latex
-            else ("Accuracy", "Train"),
-            "accuracy_score_diff": "Test - Train Accuracy"
-            if not latex
-            else ("Accuracy", r"$\Delta$"),
-            "clinical_vocab": "Clinical Pairs",
-            "gen_vocab": "General Pairs",
-            "ext": "ClinicalSTS",  # We combine this with the clinical vocab since it captures the same idea.
-            "combined_vocab": "Combined Pairs",
-            "classifier": "Classifier",
-            "ClinicalBERT": "emilyalsentzer/Bio_ClinicalBERT",
-            "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext": "microsoft/PubMedBERT",
-            "SelectFromModel-XGBoost": "SFM-XGBoost",
-            "SelectFromModel-LinearSVM": "SFM-LinearSVM",
-            "MRMRBase": "mRMR",
-            "TopNSelector": "Top N" if not latex else "Top $N$",
-            "StdDevSelector": "Std. Dev." if not latex else "Std. Dev.",
-            "MIScorer": "MI" if not latex else "MI",
-            "STSScorer": "STS" if not latex else "STS",
-            "LinearScorer": "MI & STS" if not latex else r"MI \& STS",
-        }
-        if x in map and isinstance(map[x], tuple):
-            return map[x]
-        elif x in map and latex and isinstance(map[x], str):
-            return ("Selection Hyperparameters", map[x])
-        elif x in map:
-            return map[x]
-        return x
+
 
     # Summarizations:
     # - Group by feature_selector, scorer, model, and dset individually
