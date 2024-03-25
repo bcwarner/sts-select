@@ -11,6 +11,7 @@ class MRMRBase(BaseEstimator):
         self,
         scorer: BaseScorer,
         n_features=30,
+        preselected_features=None,
     ):
         self.n_features = n_features
         self.scorer = scorer
@@ -18,6 +19,7 @@ class MRMRBase(BaseEstimator):
         self.relevancies = None
         self.redundancies = None
         self.mrmr = None
+        self.preselected_features = preselected_features
 
         if not isinstance(scorer, BaseScorer):
             raise TypeError("scorer must be a BaseScorer")
@@ -80,6 +82,25 @@ class MRMRBase(BaseEstimator):
             (selected, relevancesVector[selected], relevancesVector[selected], 0)
         )
         candidates.remove(selected)
+
+        # Add the preselected features
+        if self.preselected_features is not None:
+            for f in self.preselected_features:
+                selectedFeatures.append(
+                    (f, relevancesVector[f], relevancesVector[f], 0)
+                )
+                candidates.remove(f)
+                candidatesVec[f] = False
+
+            # Now compute the accumulated redundancy
+            for idxc, can in enumerate(candidates):
+                lastFeatureSelectedMI = self.score_lfs_candidate(
+                    X, candidatesVec, f
+                )
+                accumulatedRedundancy[can] += lastFeatureSelectedMI[idxc]
+
+            lastFeatureSelected = self.preselected_features[-1]
+
 
         while len(selectedFeatures) < self.n_features:
             max_mrmr = -np.inf
