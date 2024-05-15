@@ -17,13 +17,13 @@ class BaseScorer:
     ):
         """
         Base scorer class. All scorers should inherit from this class.
-        :param X:
-        :param y:
-        :param X_names:
-        :param y_names:
-        :param test:
-        :param kwargs:
-        :param cache:
+
+        :param X: Source data to score.
+        :param y: Target data to score.
+        :param X_names: Source names to score.
+        :param y_names: Target names to score.
+        :param cache: Cache location for storing scores.
+        :param kwargs: Additional arguments.
         """
         self.X = X
         self.y = y
@@ -46,8 +46,8 @@ class BaseScorer:
             self.score(self.X, self.y)
 
     def scored(self):
-        """
-        Check if the scorer has already been initialized.
+        """Check if the scorer has already been initialized.
+
         :return:
         """
         return len(self.X_pairings) > 0 and len(self.X_y_pairings) > 0
@@ -61,6 +61,7 @@ class BaseScorer:
     def score(self, X, y):
         """
         Score the given X and y.
+
         :param X:
         :param y:
         :return:
@@ -102,8 +103,8 @@ class BaseScorer:
 
     def load_cache(self):
         """
-        Load the cache with the given name.
-        :param name:
+        Load the cache.
+
         :return:
         """
         #
@@ -133,8 +134,8 @@ class BaseScorer:
 
     def save_cache(self):
         """
-        Save the cache with the given name.
-        :param name:
+        Save the cache.
+
         :return:
         """
         if self.cache is None:
@@ -221,8 +222,9 @@ class MIScorer(BaseScorer):
 class BaseSTSScorer(BaseScorer):
     def __init__(self, X, y, X_names=None, y_names=None, cache=None, **kwargs):
         """
-        Base class for using semantic textual similairty to score.
+        Base class for using semantic textual similarity to score.
         Assumes that we have a simple function that takes two strings and returns a score on a uniform scale.
+
         :param X:
         :param y:
         :param X_names:
@@ -266,7 +268,7 @@ class SentenceTransformerScorer(BaseSTSScorer):
         **kwargs,
     ):
         """
-        STS scorer using using the SentenceTransformers library.
+        STS scorer using the SentenceTransformers library.
 
         :param X: Source data to score (not used).
         :param y: Target data to score (not used).

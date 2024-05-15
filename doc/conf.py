@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-import importlib
-import subprocess
 
-# Make sure we install the package from the directory above by pip install -e . in the root directory
-if importlib.util.find_spec("sts_select") is None:
-    subprocess.run([sys.executable, "-m", "pip", "install", "-e", ".."])
+# Add directory up to path
+sys.path.append(str(Path("../src").resolve()))
 
 # -- General configuration -----------------------------------------------------
 
