@@ -1,0 +1,24 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+codebook: All of Us Survey Data Codebooks.xlsx
+exclude_pages:
+  - COVID-19
+  - Not Released Yet
+  - ReadMe
+cache_name: ppsp_dir.pkl
+field_label: Field Label
+field_type: Field Type
+field_validation: Text Validation Type OR Show Slider Number
+choices: Choices, Calculations, OR Slider Labels
+choices_sep: |
+max_choices: 20
+y_labels:
+  - Persistent pain following procedure

@@ -9,12 +9,15 @@ from .scoring import BaseScorer
 
 
 class StdDevSelector(BaseEstimator):
-    """
-    Selects features based on the standard deviation of the score from the dataset max.
-    From Lampos et al. (2017)
-    """
-
     def __init__(self, scorer: BaseScorer, std_dev: float = 1.0, verbose: int = 0):
+        """
+        Selects features based on the standard deviation of the score from the dataset max.
+        From Lampos et al. (2017)
+
+        :param scorer: Scorer object to use for scoring.
+        :param std_dev: Standard deviation threshold.
+        :param verbose: Verbosity level.
+        """
         self.scorer = scorer
         self.std_dev = std_dev
         self.sel_features = None
@@ -57,16 +60,29 @@ class StdDevSelector(BaseEstimator):
         return self
 
     def transform(self, X):
+        """
+        Transform the input X to only include the selected features.
+
+        :param X: Input data.
+        :return: Transformed data.
+        """
         return X[:, self.sel_features]
 
     def set_params(self, **params):
-        # Hack to make this work with array values. Should be fixed to work with sklearn correctly.
+        """
+        Helper function to set parameters in a way that's compatible with sklearn.
+
+        :param params: Parameters to set.
+        """
         for pk, pv in params.items():
             setattr(self, pk, pv)
 
 
 class TopNSelector(BaseEstimator):
     def __init__(self, scorer: BaseScorer, n_features: int = 30, verbose: int = 0):
+        """
+        
+        """
         self.scorer = scorer
         self.n_features = n_features
         self.sel_features = None
@@ -95,9 +111,19 @@ class TopNSelector(BaseEstimator):
         return self
 
     def transform(self, X):
+        """
+        Transform the input X to only include the selected features.
+
+        :param X: Input data.
+        :return: Transformed data.
+        """
         return X[:, self.sel_features]
 
     def set_params(self, **params):
-        # Hack to make this work with array values. Should be fixed to work with sklearn correctly.
+        """
+        Helper function to set parameters in a way that's compatible with sklearn.
+
+        :param params: Parameters to set.
+        """
         for pk, pv in params.items():
             setattr(self, pk, pv)

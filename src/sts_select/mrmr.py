@@ -13,6 +13,13 @@ class MRMRBase(BaseEstimator):
         n_features=30,
         preselected_features=None,
     ):
+        """
+        Applies the mRMR scoring algorithm given a BaseScorer. Inherits the `~sklearn.base.BaseEstimator`r class from sklearn.
+
+        :param scorer: A BaseScorer object.
+        :param n_features: The number of features to select.
+        :param preselected_features: A list of features to preselect.
+        """
         self.n_features = n_features
         self.scorer = scorer
         self.sel_features = None
@@ -66,7 +73,14 @@ class MRMRBase(BaseEstimator):
         return X[:, self.sel_features]
 
     def fit(self, X, y):
-        # Adapted from fast-mRMR without optimizations (Ramírez-Gallego et al.)
+        """
+        Fits the mRMR algorithm to the data given the scoring algorithm.
+
+        Adapted from fast-mRMR without optimizations (Ramírez-Gallego et al.)
+
+        :param X: The data to fit (not used).
+        :param y: The labels to fit (not used).
+        """
 
         selectedFeatures = list()
         candidates = set(x for x in range(X.shape[1]))

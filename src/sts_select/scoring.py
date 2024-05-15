@@ -126,6 +126,10 @@ class BaseScorer:
             self.X_y_pairings = dat["X_y_pairings"]
             self.X_n = dat["X_n"]
             self.y_n = dat["y_n"]
+            if "X_names" in dat:
+                self.X_names = dat["X_names"]
+            if "y_names" in dat:
+                self.y_names = dat["y_names"]
 
     def save_cache(self):
         """
@@ -142,6 +146,8 @@ class BaseScorer:
                 "X_y_pairings": self.X_y_pairings,
                 "X_n": self.X_n,
                 "y_n": self.y_n,
+                "X_names": self.X_names,
+                "y_names": self.y_names
             }
             pickle.dump(out_dict, f)
 
@@ -259,6 +265,16 @@ class SentenceTransformerScorer(BaseSTSScorer):
         verbose=0,
         **kwargs,
     ):
+        """
+        STS scorer using using the SentenceTransformers library.
+
+        :param X: Source data to score (not used).
+        :param y: Target data to score (not used).
+        :param X_names: List of strings to score.
+        :param y_names: List of strings to score.
+        :param cache: Cache location for storing scores.
+        :param model_path: Path to the SentenceTransformers model.
+        """
         if model_path is None:
             raise ValueError("model_path must be specified.")
         self.model_path = model_path
@@ -275,6 +291,13 @@ class SentenceTransformerScorer(BaseSTSScorer):
         )
 
     def score(self, X, y):
+        """
+        Generates the feature-feature and feature-target scores.
+
+        :param X: Source data to score (not used).
+        :param y: Target data to score (not used).
+        :return:
+        """
         if self.sts_function("", "") is None:
             from sentence_transformers import SentenceTransformer, util
 
@@ -300,6 +323,16 @@ class GensimScorer(BaseSTSScorer):
         model_type: type = None,
         **kwargs,
     ):
+        """
+        Scorer for the Gensim library.
+
+        :param X: Source data to score (not used).
+        :param y: Target data to score (not used).
+        :param X_names: List of strings to score.
+        :param y_names: List of strings to score.
+        :param cache: Cache location for storing scores.
+        :param model_path: Path to the Gensim model.
+        """
         if model_path is None:
             raise ValueError("model_path must be specified.")
         self.model_path = model_path
@@ -319,6 +352,13 @@ class GensimScorer(BaseSTSScorer):
         )
 
     def score(self, X, y):
+        """
+        Scores the similarity of the Gensim embeddings.
+
+        :param X: Source data to score (not used).
+        :param y: Target data to score (not used).
+        :return:
+        """
         if self.sts_function("", "") is None:
             from sentence_transformers import util
 
