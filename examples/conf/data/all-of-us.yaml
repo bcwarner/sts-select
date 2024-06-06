@@ -1,0 +1,18 @@
+name: all-of-us
+codebook: All of Us Survey Data Codebooks.xlsx
+exclude_pages:
+  - COVID-19
+  - COPE
+  - Not Released Yet
+  - ReadMe
+  - Basics
+cache_name: cache
+field_label: Field Label
+field_type: Field Type
+field_validation: Text Validation Type OR Show Slider Number
+choices: Choices, Calculations, OR Slider Labels
+choices_sep: |
+max_categories: 5
+y_labels:
+  - Persistent pain following procedure
+example_feature_ratio: 5 # How many examples to train on for each feature

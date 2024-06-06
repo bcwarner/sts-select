@@ -1,0 +1,10 @@
+root: ~/
+source: ${path.root}/source_data.xlsx
+redcap: null
+results: ${path.root}/results
+figures: ${path.root}/figures
+cache: ${path.root}/cache
+sts_cache: ${path.cache}/sem_sim.pk
+mi_cache: ${path.cache}/mi_sim.pk
+sts_models_path: ${path.root}/sts_scorers/models 
+sts_data_path: ${path.root}/sts_scorers

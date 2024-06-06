@@ -22,6 +22,7 @@ class StdDevSelector(BaseEstimator):
         self.std_dev = std_dev
         self.sel_features = None
         self.verbose = verbose
+        self.ceil_scores = None
 
     def fit(self, X, y):
         """
@@ -50,7 +51,7 @@ class StdDevSelector(BaseEstimator):
             )
             min_score = np.max(scores)
         self.sel_features = [
-            x for x in range(self.scorer.X_n) if scores[x] >= min_score
+            x for x in range(self.scorer.X_n) if scores[x] >= min_score and (self.ceil_scores is None or scores[x] <= self.ceil_scores)
         ]
         # Sort for readability
         self.sel_features = [
@@ -87,6 +88,7 @@ class TopNSelector(BaseEstimator):
         self.n_features = n_features
         self.sel_features = None
         self.verbose = verbose
+        self.ceil_scores = None
 
     def fit(self, X, y):
         """
@@ -104,6 +106,10 @@ class TopNSelector(BaseEstimator):
             scores[x] = np.mean(
                 [self.scorer.X_y_score(x, yi) for yi in range(self.scorer.y_n)]
             )
+        # Replace scores above the ceil_scores threshold with 0s
+        if self.ceil_scores is not None:
+            scores = np.where(scores > self.ceil_scores, 0, scores)
+
         self.sel_features = [
             x for x in reversed(np.argsort(scores)[-self.n_features :])
         ]

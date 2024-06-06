@@ -41,7 +41,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import matplotlib.pyplot as plt
 from redcap_sts_scorers.train import (GEN_VOCAB_NAME, dset_options,
                                       model_options, model_path)
-from skrebate import ReliefF
 
 from sts_select.gensim import FastTextModel, SkipgramModel
 from sts_select.mrmr import MRMRBase
@@ -49,86 +48,58 @@ from sts_select.scoring import (BaseSTSScorer, GensimScorer, LinearScorer,
                                 MIScorer, SentenceTransformerScorer)
 from sts_select.target_sel import StdDevSelector, TopNSelector
 
+import hydra
+from omegaconf import DictConfig, OmegaConf
+
 pd.set_option("display.max_columns", None)
 redcap = None
 redcap_features = None
-
-TARGET_LABEL = "persistent_pain"
-THREE_MO_COMPLETION = 282
-SIX_MO_COMPLETION = 344
-RANDOM_STATE = 278797835
-
-TARGET_QUESTION_1 = "In the past week, did you have any pain in your surgical incision or in the area related to your surgery? "
-TARGET_QUESTION_2 = "For pain in the area related to your surgery, did the pain start or worsen after the surgery?"
-TARGET_QUESTION_3 = "On a scale of zero to ten, with zero being no pain and ten being the worst pain, please fill in your average pain level during the past week, while you were at rest."
-TARGET_QUESTION_4 = "On a scale of zero to ten, with zero being no pain and ten being the worst pain, please fill in your average pain level during the past week, when you were active or moving."
-
-STS_CACHE_FNAME = "sem_sim.pk"
-MI_CACHE_FNAME = "mi_sim.pk"
-FIGURE_DIR = "figures"
-RESULTS_DIR = "results"
 
 args = None
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-
-def set_seed():
-    np.random.seed(RANDOM_STATE)
-    torch.manual_seed(RANDOM_STATE)
-
-
-set_seed()
-
-# Get survey data.
-if not os.path.exists(os.path.join(os.path.curdir, FIGURE_DIR)):
-    os.makedirs(os.path.join(os.path.curdir, FIGURE_DIR))
-
-if not os.path.exists(os.path.join(os.path.curdir, RESULTS_DIR)):
-    os.makedirs(os.path.join(os.path.curdir, RESULTS_DIR))
-
-
-def dump_result(data, param_dict, fname):
-    with open(os.path.join(os.path.curdir, RESULTS_DIR, fname), "wb") as of:
+def dump_result(config, data, param_dict, fname):
+    with open(os.path.join(config["path"]["results"], fname), "wb") as of:
         pickle.dump((data, param_dict), of)
 
-
-def select_outcome(df, completion):
-    mask = ~df.iloc[
-        :, completion
-    ].isnull()  # status.loc[:,'Complete?.10'] == 'Complete'
-    id_list = df[mask]["Study ID:"]
-    return df.loc[redcap["Study ID:"].isin(id_list)]
-
-
-def get_result(x):
-    bool1 = x[TARGET_QUESTION_1] == "Yes" and x[TARGET_QUESTION_2] == "Yes"
-    bool2 = x[TARGET_QUESTION_3] >= 3 or x[TARGET_QUESTION_4] >= 3
+def get_result_ppsp(config, x):
+    bool1 = x[config["data"]["questions"][0]] == "Yes" and x[config["data"]["questions"][1]] == "Yes"
+    bool2 = x[config["data"]["questions"][2]] >= 3 or x[config["data"]["questions"][3]] >= 3
 
     return int(bool1 and bool2)
 
 
-def extract_outcome(redcap: pd.DataFrame):
-    outcome = redcap.copy()
+def extract_outcome_ppsp(config, redcap: pd.DataFrame):
+    mask = ~redcap.loc[:, config["data"]["six_month_completion"]].isnull()
+    id_list = redcap[mask]["Study ID:"]
+    outcome = redcap.loc[redcap["Study ID:"].isin(id_list)]
     outcome["STUDY_ALIAS"] = redcap["Study ID:"]
-    outcome[TARGET_LABEL] = redcap.apply(lambda x: get_result(x), axis=1)
-    outcome = outcome.drop(
-        columns=[
-            TARGET_QUESTION_1,
-            TARGET_QUESTION_2,
-            TARGET_QUESTION_3,
-            TARGET_QUESTION_4,
-        ]
-    )
+
+    response_mean = outcome.STUDY_ALIAS.value_counts().mean()
+    response_std = outcome.STUDY_ALIAS.value_counts().std()
+    response_max = outcome.STUDY_ALIAS.value_counts().max()
+
     # Merge all rows with the same STUDY_ALIAS, picking the last value by Repeat Instance, except when values are NaN
     outcome = outcome.groupby("STUDY_ALIAS").last()
     outcome = outcome.reset_index()
+
+    outcome[config["data"]["label"]] = outcome.apply(lambda x: get_result_ppsp(config, x), axis=1)
+    outcome = outcome.drop(
+        columns=config["data"]["questions"]
+    )
 
     out_table = {
         "Individuals with Complete Mark": outcome.STUDY_ALIAS.nunique(),
         "PPSP (+)": outcome[outcome.persistent_pain == 1].STUDY_ALIAS.nunique(),
         "PPSP (-)": outcome[outcome.persistent_pain == 0].STUDY_ALIAS.nunique(),
+        "Responses by Individual (mean)": response_mean,
+        "Responses by Individual (std. dev.)": response_std,
+        "Responses by Individual (max)": response_max,
     }
+
+
+
 
     race_key_format = "Please specify your race: (choice={})"
     race_keys = [
@@ -147,6 +118,8 @@ def extract_outcome(redcap: pd.DataFrame):
     # Do this for sex
     sex_key = "What is your sex (assigned at birth):"
     for sex in outcome[sex_key].unique():
+        if pd.isna(sex):
+            continue
         out_table[sex] = outcome[outcome[sex_key] == sex].STUDY_ALIAS.nunique()
     # Check for NAs
     out_table["(No Answer)"] = outcome[pd.isna(outcome[sex_key])].STUDY_ALIAS.nunique()
@@ -163,7 +136,7 @@ def extract_outcome(redcap: pd.DataFrame):
 
     # Use tabular to print out a table in the style specified with argpase.
 
-    print(tabulate(tab_dict, headers="keys", tablefmt=args.table_fmt))
+    print(tabulate(tab_dict, headers="keys", tablefmt=config['table_fmt']))
     # Now do it with a LaTeX table.
     print(tabulate(tab_dict, headers="keys", tablefmt="latex"))
     return outcome
@@ -171,15 +144,16 @@ def extract_outcome(redcap: pd.DataFrame):
 
 # ==== TEMPORARY ====
 # Select only the things that are class labels or continuous.
-def filter_data(df: pd.DataFrame, max_categories: int = 5):
+def filter_data(config, df: pd.DataFrame):
     # Get list of acceptable features.
 
     acceptable_features = set()
 
-    if args.feature_filter:
+    if config["feature_filter"]:
+        raise("No longer used")
         for idx, data in redcap_features.iterrows():
             if data["important "] == 1:
-                acceptable_features.add(data["Name"])
+                acceptable_features.add(data["Name"])        
 
     # Attempt to categorize columns as one of: continuous, binary, one-hot, time, external data (pngs)
     image_ext_filter = re.compile("(jpg|jpeg|tiff|png|gif|svg)", re.IGNORECASE)
@@ -214,15 +188,26 @@ def filter_data(df: pd.DataFrame, max_categories: int = 5):
         df.loc[:, col_name] = pd.NA
         bad_res["fail"].append(col_name)
 
-    for col_name in df:
+    X_before_index = df.columns.get_loc(config["data"]["X_before"])
+    for col_idx, col_name in enumerate(df):
         col = df[col_name]
         col_dtype = col.dtype
 
-        if col_name == TARGET_LABEL:
+        # Keep the actual labels
+        if col_name == config["data"]["label"]:
             kept_cols.append(col)
             continue
 
-        if args.feature_filter:
+        # If the column is after X_before, skip it.
+        if (config["data"]["X_before"] is not None and col_idx > X_before_index and col_name not in
+                config["data"]["questions"]):
+            continue
+
+        # Drop columns that look like the label (i.e. generated by REDCap) but aren't
+        if any([label in col_name and col_name != label for label in config["data"]["questions"]]):
+            continue
+
+        if config["feature_filter"]:
             if col_name not in acceptable_features:
                 continue
 
@@ -248,17 +233,15 @@ def filter_data(df: pd.DataFrame, max_categories: int = 5):
             # Yes => Convert to categorical
             # No => Drop for now.
 
-            if len(col.unique()) <= max_categories:
+            if len(col.unique()) <= config["data"]["max_categories"]:
                 col_dum = pd.get_dummies(col, prefix=col_name)
                 for col_sub in col_dum:
                     kept_cols.append(col_dum[col_sub])
                     transformers[col_sub].append("SimpleImputerS")
 
         elif is_datetime64_any_dtype(col_dtype):
-            # Convert to numerical
-            kept_cols.append(col)
-            transformers[col_name].append(MinMaxScaler)
-            transformers[col_name].append("SimpleImputerT")
+            # Skip these, no frame of reference.
+            continue
 
         elif is_numeric_dtype(col_dtype):
             kept_cols.append(col)
@@ -270,7 +253,7 @@ def filter_data(df: pd.DataFrame, max_categories: int = 5):
     # Make categorical text-columns one-hot.
 
     # Normalize continuous numerical data.
-    if args.print_del_cols:
+    if config['print_del_cols']:
         print("--- Deleted columns ---")
         print(
             "\n".join(
@@ -325,36 +308,23 @@ def build_pipeline(**kwargs):
     return pipe
 
 
-def train_eval(df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}):
-    X = df_filtered.drop(TARGET_LABEL, axis=0).T
-    y = df_filtered.loc[TARGET_LABEL]
+def train_eval(config: DictConfig, df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}):
+    X = df_filtered.drop(config["data"]["label"], axis=0).T
+    y = df_filtered.loc[config["data"]["label"]]
 
     # Split
-    k_folds = args.k_folds if args.k_folds != -1 else 5
+    k_folds = config['k_folds'] if config['k_folds'] != -1 else 5
     inner_stratcv = StratifiedKFold(
-        n_splits=k_folds, shuffle=True, random_state=RANDOM_STATE
+        n_splits=k_folds, shuffle=True, random_state=config["seed"]
     )
     outer_stratcv = StratifiedKFold(
-        n_splits=10, shuffle=True, random_state=RANDOM_STATE
+        n_splits=10, shuffle=True, random_state=config["seed"]
     )
 
     scores = ["accuracy", "roc_auc", "average_precision"]
-    if type(pipe[1]) != ReliefF:
-        cv = GridSearchCV(
-            pipe,
-            parameters,
-            scoring=scores,
-            refit="roc_auc",
-            verbose=args.verbose,
-            cv=inner_stratcv,
-            n_jobs=args.n_jobs if type(pipe[-1]) != XGBClassifier else 1,
-        )  # 5-fold CV
-        # Train
-        warnings.filterwarnings("ignore")
-    else:
-        cv = pipe
+    cv = pipe
 
-    if args.nested:
+    if config['nested']:
         score_res = cross_validate(
             cv,
             X,
@@ -362,7 +332,7 @@ def train_eval(df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}
             scoring=scores,
             cv=outer_stratcv,
             n_jobs=1,
-            verbose=args.verbose,
+            verbose=config['verbose'],
             return_estimator=True,
         )
         # Eval
@@ -373,7 +343,7 @@ def train_eval(df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}
         cv_est = cv  # Untested and not used
     else:
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=RANDOM_STATE
+            X, y, test_size=test_size, random_state=config["seed"]
         )
         X_train = X_train.reset_index(drop=True)
         y_train = y_train.reset_index(drop=True)
@@ -395,11 +365,11 @@ def train_eval(df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}
                 out[f"{score.__name__}_train"] = score(y_train, cv_est.predict(X_train))
 
     best_feats = None
-    if isinstance(cv_est.steps[1][1], MRMRBase):
+    if isinstance(cv_est.steps[1][1], MRMRBase) or isinstance(cv_est.steps[1][1], StdDevSelector) or isinstance(cv_est.steps[1][1], TopNSelector):
         best_feats = [X_questions[y] for y in cv_est.steps[1][1].sel_features]
 
     feat_importance = None
-    if args.feature_importance:
+    if config['feature_importance']:
         import shap
 
         print("Getting SHAP values")
@@ -407,7 +377,7 @@ def train_eval(df_filtered, pipe, X_questions=None, test_size=0.2, parameters={}
         def f(x_):
             return cv.predict_proba(pd.DataFrame(x_, columns=X.columns))
 
-        explainer = shap.KernelExplainer(f, X_train, seed=RANDOM_STATE)
+        explainer = shap.KernelExplainer(f, X_train, seed=config["seed"])
         shap_values = explainer(X_test)
         shap_abs_values = np.mean(np.abs(shap_values.values), axis=0)
         # Test on entire set since it's small.
@@ -477,9 +447,9 @@ class ClinicalBERTSTSScorer(BaseSTSScorer):
             y,
             X_names,
             y_names,
-            cache=os.path.join(args.root_dir, STS_CACHE_FNAME),
+            cache=cache,
             sts_function=lambda a, b: None,
-            verbose=args.verbose,
+            verbose=verbose,
         )
         # Empty function here because BERT will be loaded only if needed.
 
@@ -497,7 +467,7 @@ class ClinicalBERTSTSScorer(BaseSTSScorer):
 
 
 def compute_similarities(
-    X_questions, y_questions, X, y_truth, preprocessor, clear_cache=False
+    config: DictConfig, X_questions, y_questions, X, y_truth, preprocessor, clear_cache=False
 ):
     # Generate all possible scorers for X and X_y
     # - MI Scorer
@@ -506,35 +476,35 @@ def compute_similarities(
     X = preprocessor.fit_transform(X)
     scorers = {}
 
-    scorers["MIScorer"] = MIScorer(
+    scorers[("MIScorer", None, None)] = MIScorer(
         X,
         y_truth,
-        random_state=RANDOM_STATE,
-        cache=os.path.join(args.root_dir, MI_CACHE_FNAME),
-        verbose=args.verbose,
+        random_state=config["seed"],
+        cache=config["path"]["mi_cache"],
+        verbose=config["verbose"],
     )
 
-    scorers["STSScorer_ClinicalBERT_ext"] = ClinicalBERTSTSScorer(
+    scorers[("STSScorer", "ClinicalBERT", "ext")] = ClinicalBERTSTSScorer(
         X,
         y_truth,
         X_questions,
         y_questions,
-        cache=os.path.join(args.root_dir, STS_CACHE_FNAME),
-        verbose=args.verbose,
+        cache=config["path"]["sts_cache"],
+        verbose=config["verbose"],
     )
 
-    scorers["LinearScorer_ClinicalBERT_ext"] = LinearScorer(
+    scorers[("LinearScorer", "ClinicalBERT", "ext")] = LinearScorer(
         X,
         y_truth,
-        scorers=[scorers["MIScorer"], scorers["STSScorer_ClinicalBERT_ext"]],
+        scorers=[scorers[("MIScorer", None, None)], scorers[("STSScorer", "ClinicalBERT", "ext")]],
         alpha=[1, 1],
-        verbose=args.verbose,
+        verbose=config["verbose"],
     )
 
     # Product of models and datasets for each possible BaseSTS and LinearScorer.
     for dset, model in itertools.product(dset_options, model_options):
         print(f"Loading {model} for {dset}")
-        sts_name = f"STSScorer_{model}_{dset}"
+        sts_name = ("STSScorer", model, dset)
         sts_cache_name = f"STS_{model}_{dset}.pkl".replace("/", "-")
         if "other" in model:
             if dset != GEN_VOCAB_NAME:
@@ -544,11 +514,11 @@ def compute_similarities(
                 y_truth,
                 X_questions,
                 y_questions,
-                model_path=model_path(dset, model),
-                cache=os.path.join(args.root_dir, sts_cache_name),
+                model_path=model_path(config, dset, model),
+                cache=os.path.join(config["path"]["cache"], sts_cache_name),
                 model_type=SkipgramModel if "Skipgram" in model else FastTextModel,
                 # Note: this will break if we add more models.
-                verbose=args.verbose,
+                verbose=config["verbose"],
             )
         else:
             sts_scorer = SentenceTransformerScorer(
@@ -556,20 +526,20 @@ def compute_similarities(
                 y_truth,
                 X_questions,
                 y_questions,
-                model_path=model_path(dset, model),
+                model_path=model_path(config, dset, model),
                 device="cuda",
-                cache=os.path.join(args.root_dir, sts_cache_name),
-                verbose=args.verbose,
+                cache=os.path.join(config["path"]["cache"], sts_cache_name),
+                verbose=config["verbose"],
             )
 
         scorers[sts_name] = sts_scorer
-        linear_name = f"LinearScorer_{model}_{dset}"
+        linear_name = ("LinearScorer", model, dset)
         linear_scorer = LinearScorer(
             X,
             y_truth,
-            scorers=[scorers["MIScorer"], sts_scorer],
+            scorers=[scorers[("MIScorer", None, None)], sts_scorer],
             alpha=[1, 1],
-            verbose=args.verbose,
+            verbose=config["verbose"],
         )
         scorers[linear_name] = linear_scorer
 
@@ -578,39 +548,30 @@ def compute_similarities(
     return scorers
 
 
-def prepare_source_data():
+def prepare_source_data(config: DictConfig):
     global redcap, redcap_features
-    source_options = [
-        r"REDCAP_FUL_REPORT_AUG_3_2022.csv",
-        r"REDCap Survey Data Annotated 2-6-2023.xlsx",
-    ]
-    redcap = pd.read_excel(
-        os.path.join(os.path.dirname(args.root_dir), source_options[1]),
-        # on_bad_lines="warn",
-        # encoding="latin1",
-    )
-    redcap_features = pd.read_excel(
-        os.path.join(args.root_dir, "redcap", r"redcap_features.xlsx")
+    redcap = pd.read_csv(
+        config["path"]["source"],
+        on_bad_lines="warn",
+        encoding="latin1",
     )
     # Important preprocessing filtration.
-    df_filtered = select_outcome(redcap, SIX_MO_COMPLETION)
-    df_filtered = extract_outcome(df_filtered)
-    df_filtered, transformers = filter_data(df_filtered)
+    if config["data"]["name"] == "ppsp":
+        df_filtered = extract_outcome_ppsp(config, redcap)
+    else:
+        df_filtered = redcap
+    df_filtered, transformers = filter_data(config, df_filtered)
     preprocessor = build_preprocessor(transformers)
     # Combine pipelines and build
     y_questions = [
-        TARGET_LABEL,
-        TARGET_QUESTION_1,
-        TARGET_QUESTION_2,
-        TARGET_QUESTION_3,
-        TARGET_QUESTION_4,
-    ]
-    X_questions = df_filtered.drop(TARGET_LABEL, axis=0).axes[0].tolist()
+        config["data"]["label"]
+    ] + config["data"]["questions"]
+    X_questions = df_filtered.drop(config["data"]["label"], axis=0).axes[0].tolist()
 
-    X = df_filtered.drop(TARGET_LABEL, axis=0).T
-    y_truth = df_filtered.loc[TARGET_LABEL]
+    X = df_filtered.drop(config["data"]["label"], axis=0).T
+    y_truth = df_filtered.loc[config["data"]["label"]]
     scorers = compute_similarities(
-        X_questions, y_questions, X, y_truth, preprocessor, clear_cache=args.clear_cache
+        config, X_questions, y_questions, X, y_truth, preprocessor, clear_cache=config["clear_cache"]
     )
 
     return (
@@ -628,6 +589,7 @@ def prepare_source_data():
 
 
 def eval_auroc_hyperparams(
+    config: OmegaConf,
     df_filtered=None,
     pipe=None,
     scorers=None,
@@ -644,7 +606,7 @@ def eval_auroc_hyperparams(
     model_name = type(classifier).__name__
 
     # Anymore than quarter is probably overkill.
-    N_rng = [x for x in range(1, len(X_questions) // 7)]
+    N_rng = None #[x for x in range(1, len(X_questions) // 7)]
     a_rng = [1] if type(scorer) != LinearScorer else np.linspace(0, 1, 50)
 
     auroc_res_test = {}
@@ -663,7 +625,7 @@ def eval_auroc_hyperparams(
         return te_results
 
     space = [x for x in itertools.product(N_rng, a_rng)]
-    res = Parallel(n_jobs=args.n_jobs, verbose=args.verbose)(
+    res = Parallel(n_jobs=config["n_jobs"], verbose=config['verbose'])(
         delayed(eval_params)(N, alpha) for N, alpha in space
     )
 
@@ -755,6 +717,7 @@ def eval_auroc_hyperparams(
 
 
 def eval_mi_embeddings_correlation(
+    config: DictConfig,
     df_filtered=None,
     pipe=None,
     y_questions=None,
@@ -768,8 +731,8 @@ def eval_mi_embeddings_correlation(
     :return:
     """
     preprocessor = pipe.named_steps["preprocessor"]
-    X = df_filtered.drop(TARGET_LABEL, axis=0).T
-    y_truth = df_filtered.loc[TARGET_LABEL]
+    X = df_filtered.drop(config["data"]["label"], axis=0).T
+    y_truth = df_filtered.loc[config["data"]["label"]]
     X = preprocessor.fit_transform(X, y_truth)
 
     feature_selector = pipe.named_steps["feature_selector"]
@@ -876,116 +839,17 @@ def eval_base_train_time(
     """
     pass
 
+@hydra.main(version_base=None,
+            config_path="../../conf",
+            config_name="config")
+def main(config: DictConfig) -> None:
+    # Get survey data.
+    if not os.path.exists(config["path"]["figures"]):
+        os.makedirs(config["path"]["figures"])
 
-# =============================
-
-if __name__ == "__main__":
-    # Process arguments.
-    if hasattr(os, "register_at_fork"):
-        os.register_at_fork(after_in_child=set_seed)
-
-    parser = argparse.ArgumentParser(
-        prog="train",
-        description="Evaluator for different feature selection schemes on REDCap data.",
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store",
-        default=0,
-        help="Verbosity number for CV (0-3)",
-        type=int,
-    )
-    parser.add_argument(
-        "-k",
-        "--k-folds",
-        default=5,
-        action="store",
-        help="Number of folds for CV, default 5",
-        type=int,
-    )
-    parser.add_argument(
-        "-f",
-        "--feature_importance",
-        default=False,
-        action="store",
-        help="Display feature importance",
-        type=bool,
-    )
-    parser.add_argument(
-        "-b",
-        "--best-params",
-        default=True,
-        action="store",
-        help="Display best parameters",
-        type=bool,
-    )
-    parser.add_argument(
-        "--best-feats",
-        default=True,
-        action="store",
-        help="Display best features",
-        type=bool,
-    )
-    parser.add_argument(
-        "-p",
-        "--feature-filter",
-        default=True,
-        action="store",
-        help="Filter out columns from a given list",
-        type=bool,
-    )
-    parser.add_argument(
-        "-t",
-        "--table-fmt",
-        default="grid",
-        choices=["grid", "latex"],
-        action="store",
-        type=str,
-    )
-    parser.add_argument(
-        "-c",
-        "--clear-cache",
-        default=False,
-        action="store",
-        help="Clear the similarity score cache.",
-        type=bool,
-    )
-    parser.add_argument(
-        "--nested",
-        default=False,
-        action="store",
-        help="Use nested cross-validation.",
-        type=bool,
-    )
-    parser.add_argument(
-        "--list-scorers",
-        "-l",
-        default=False,
-        action="store_true",
-        help="List available scorers.",
-    )
-    parser.add_argument(
-        "--feature_num",
-        default=20,
-        action="store",
-        help="Number of features to select.",
-        type=int,
-    )
-    parser.add_argument("-n", "--n-jobs", default=1, action="store", type=int)
-    # Default root-dir should correspond to the root of the git repo (i.e. contains feature_selectors, redcap, sts_scorers)
-    parser.add_argument(
-        "-r",
-        "--root-dir",
-        default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        action="store",
-        type=str,
-    )
-    parser.add_argument("--print_del_cols", default=False, action="store", type=bool)
-    parser.add_argument("--sel_fs", default=None, action="store", type=str)
-    parser.add_argument("--sel_class", default=None, action="store", type=str)
-    parser.add_argument("--prog_name", default="train_eval", type=str)
-    args = parser.parse_args()
+    if not os.path.exists(config["path"]["results"]):
+        os.makedirs(config["path"]["results"])
+    # Process arguments
 
     (
         df_filtered,
@@ -993,67 +857,66 @@ if __name__ == "__main__":
         scorers,
         X_questions,
         y_questions,
-    ) = prepare_source_data()
+    ) = prepare_source_data(config)
 
     feature_selectors = {
-        "Identity": (FunctionTransformer(), {}),
-        "SelectFromModel-XGBoost": (
+        ("Identity",): (FunctionTransformer(), {}),
+        ("SelectFromModel-XGBoost",): (
             SelectFromModel(
                 XGBClassifier(
                     objective="binary:hinge",
                     eval_metric=roc_auc_score,
-                    random_state=RANDOM_STATE,
+                    random_state=config["seed"],
                 ),
-                max_features=args.feature_num,
+                max_features=config["feature_num"],
             ),
             {},
         ),
-        "SelectFromModel-LinearSVM": (
+        ("SelectFromModel-LinearSVM",): (
             SelectFromModel(
-                LinearSVC(C=1, dual=False, random_state=RANDOM_STATE),
-                max_features=args.feature_num,
+                LinearSVC(C=1, dual=False, random_state=config["seed"]),
+                max_features=config["feature_num"],
             ),
             {"feature_selector__estimator__C": np.logspace(-2, 0, 10)},
         ),
-        "RFE": (
+        ("RFE",): (
             RFE(
-                LinearSVC(C=1, dual=False, random_state=RANDOM_STATE),
-                n_features_to_select=args.feature_num,
+                LinearSVC(C=1, dual=False, random_state=config["seed"]),
+                n_features_to_select=config["feature_num"],
             ),
             {"feature_selector__estimator__C": np.logspace(-2, 0, 10)},
-        ),
-        "ReliefF": (
-            ReliefF(n_features_to_select=args.feature_num, n_jobs=1, n_neighbors=10),
-            {},
         ),
     }
     for scorer in scorers.keys():
         hyperparam_dict = {
-            "feature_selector__n_features": [args.feature_num],
+            "feature_selector__n_features": [config["feature_num"]],
         }
         if "LinearScorer" in scorer:
             hyperparam_dict["feature_selector__scorer__alpha[1]"] = np.logspace(
                 -2, 2, 30
             )
-        feature_selectors[f"MRMRBase_{scorer}"] = (
+        feature_selectors[tuple(["MRMRBase"] + list(scorer))] = (
             MRMRBase(scorers[scorer]),
             hyperparam_dict,
         )
-        feature_selectors[f"TopNSelector_{scorer}"] = (
+        feature_selectors[tuple(["TopNSelector"] + list(scorer))] = (
             TopNSelector(scorers[scorer]),
-            hyperparam_dict,
+            {**hyperparam_dict,
+                #"feature_selector__ceil_scores": [0.4, 0.45, 0.5, 0.55, 0.6, 1],
+            }
         )
-        feature_selectors[f"StdDevSelector_{scorer}"] = (
+        feature_selectors[tuple(["StdDevSelector"] + list(scorer))] = (
             StdDevSelector(scorers[scorer]),
             {
                 "feature_selector__std_dev": [
-                    0.3 if ("Skipgram" in scorer or "FastText" in scorer) else 1
-                ]
+                    0.3 if ("Skipgram" in scorer or "FastText" in scorer) else 2
+                ],
+                #"feature_selector__ceil_scores": [0.4, 0.45, 0.5, 0.55, 0.6, 1],
             },
         )
 
     # Print list of valid FS
-    if args.list_scorers:
+    if config["list_scorers"]:
         print("Valid feature selectors:")
         for fs in feature_selectors.keys():
             print(f"\t{fs}")
@@ -1065,25 +928,26 @@ if __name__ == "__main__":
                 objective="binary:hinge",
                 eval_metric=roc_auc_score,
                 use_label_encoder=False,
-                random_state=RANDOM_STATE,
-                verbosity=max(args.verbose - 1, 0),
+                random_state=config["seed"],
+                verbosity=max(config["verbose"] - 1, 0),
+                max_leaves=3,
+                max_depth=3,
+                alpha=0.1,
+                eta=0.05,
             ),
-            {
-                "classifier__n_estimators": [2],
-                "classifier__max_leaves": [2],
-            },
+            {}
         ),
         "LinearSVM": (
-            LinearSVC(random_state=RANDOM_STATE, dual=True),
+            LinearSVC(random_state=config["seed"], dual=True),
             {
                 "classifier__C": np.logspace(-2, 0, 10),
             },
         ),
         "MLP": (
-            MLPClassifier(random_state=RANDOM_STATE),
+            MLPClassifier(random_state=config["seed"]),
             {
                 "classifier__activation": ["tanh", "relu"],
-                "classifier__alpha": np.logspace(-4, 0, 10),
+                "classifier__alpha": np.logspace(-2, 0, 10),
             },
         ),
         "GaussianNB": (GaussianNB(), {}),
@@ -1098,17 +962,20 @@ if __name__ == "__main__":
     # Go over every possible combination of feature-selection schemes and classifiers.
 
     sel_fs = (
-        args.sel_fs.split(",") if args.sel_fs is not None else feature_selectors.keys()
+        config["sel_fs"].split(",") if config["sel_fs"] is not None else feature_selectors.keys()
     )
     sel_class = (
-        args.sel_class.split(",") if args.sel_class is not None else classifiers.keys()
+        config["sel_class"].split(",") if config["sel_class"] is not None else classifiers.keys()
     )
 
     # Iterate through sel_fs and find all feature selectors that match
     # the given string
     matching_fs = set()
-    for fs in sel_fs:
-        matching_fs.update([x for x in feature_selectors.keys() if fs in x])
+    if config["sel_fs"] is not None:
+        for fs in sel_fs:
+            matching_fs.update([x for x in feature_selectors.keys() if fs in x])
+    else:
+        matching_fs = set(feature_selectors.keys())
 
     sel_fs = list(matching_fs)
 
@@ -1124,23 +991,23 @@ if __name__ == "__main__":
     for name, p in pipes.items():
         pipe, params = p
 
-        if args.prog_name == "train_eval":
+        if config["prog_name"] == "train_eval":
             print(f"Fitting {name}")
             te_results, best_params, best_feats, feat_imp = train_eval(
-                df_filtered, pipe, X_questions=X_questions, parameters=params
+                config, df_filtered, pipe, X_questions=X_questions, parameters=params
             )
-            if args.best_params:
+            if config["best_params"]:
                 print(f"Best Params for {name}")
                 bp = [[k, v] for k, v in best_params.items()]
                 print(tabulate(bp, tablefmt="latex"))
-                print(tabulate(bp, tablefmt=args.table_fmt))
+                print(tabulate(bp, tablefmt=config["table_fmt"]))
 
-            if args.best_feats and best_feats is not None:
+            if config["best_feats"] and best_feats is not None:
                 print(f"--- Best Features for {name} ---")
                 print(best_feats)
                 print(f"--------------------------------")
 
-            if args.feature_importance and feat_imp is not None:
+            if config["feature_importance"] and feat_imp is not None:
                 print(f"--- Feature Importance for {name} ---")
                 # For each of the non-whole number keys in feat_imp, print the key and the value
                 for k, v in feat_imp.items():
@@ -1149,12 +1016,11 @@ if __name__ == "__main__":
                         feat_imp[k] = [f"{x:.4f}" for x in v]
 
                 print(tabulate(feat_imp, "keys", tablefmt="latex"))
-                print(tabulate(feat_imp, "keys", tablefmt=args.table_fmt))
+                print(tabulate(feat_imp, "keys", tablefmt=config["table_fmt"]))
                 feat_imp_df = pd.DataFrame(feat_imp)
                 feat_imp_df.to_excel(
                     os.path.join(
-                        args.root_dir,
-                        "results",
+                        config["path"]["results"],
                         f"{name[0].replace('/', '-')}-{name[1].replace('/', '-')}-feat_imp.xlsx",
                     ),
                     sheet_name="Feature Importance",
@@ -1167,21 +1033,21 @@ if __name__ == "__main__":
             )
 
         else:
-            print(f"Running {args.prog_name}")
-            locals()[args.prog_name](
+            print(f"Running {config['prog_name']}")
+            locals()[config['prog_name]']](
                 df_filtered,
                 pipe,
                 scorers,
                 parameters=params,
             )
 
-    if args.prog_name == "train_eval":
+    if config['prog_name'] == "train_eval":
         print(tabulate(results, "keys", tablefmt="latex"))
-        print(tabulate(results, "keys", tablefmt=args.table_fmt))
+        print(tabulate(results, "keys", tablefmt=config['table_fmt']))
         # Split up the feature_selector names into separate columns
         sub_columns = ["feature_selector", "scorer", "model", "dset"]
         for result in results:
-            fs_names = result["feature_selector"].split("_")
+            fs_names = result["feature_selector"]
             for idx, sc in enumerate(sub_columns):
                 if idx < len(fs_names):
                     result[sc] = fs_names[idx]
@@ -1199,12 +1065,17 @@ if __name__ == "__main__":
         results_df = pd.DataFrame(results)
 
         # Include the sel_fs and sel_class in the filename
-        sel_fs_fmt = "-".join(sel_fs) if args.sel_fs is not None else "all"
+        sel_fs_fmt = "-".join(sel_fs) if config['sel_fs'] is not None else "all"
         sel_fs_fmt = sel_fs_fmt.replace("/", "-")
-        sel_class_fmt = "-".join(sel_class) if args.sel_class is not None else "all"
+        sel_class_fmt = "-".join(sel_class) if config['sel_class'] is not None else "all"
         sel_class_fmt = sel_class_fmt.replace("/", "-")
         results_df.to_excel(
-            f"results/{sel_fs_fmt}-{sel_class_fmt}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.xlsx",
+            os.path.join(config["path"]["results"], f"{sel_fs_fmt}-{sel_class_fmt}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.xlsx"),
             sheet_name="Results",
             index=False,
         )
+
+# =============================
+
+if __name__ == "__main__":
+    main()

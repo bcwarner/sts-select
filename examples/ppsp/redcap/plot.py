@@ -7,26 +7,13 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
-from train import FIGURE_DIR, MI_CACHE_FNAME, RESULTS_DIR, STS_CACHE_FNAME
 from tabtex import nice_name_map
 import matplotlib
 
-GLOBAL_COLORMAP = "viridis"
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
-# Unpickle the MI cache
-with open(MI_CACHE_FNAME, "rb") as f:
-    datadict = pickle.load(f)
-    MI_X_pairings = datadict["X_pairings"]
-    MI_X_y_pairings = datadict["X_y_pairings"]
-
-# Unpiclke the STS cache
-with open(STS_CACHE_FNAME, "rb") as f:
-    datadict = pickle.load(f)
-    STS_X_pairings = datadict["X_pairings"]
-    STS_X_y_pairings = datadict["X_y_pairings"]
-
-
-def two_param(data, param_dict):
+def two_param(config: OmegaConf, data, param_dict):
     # Three subplots, side by side.
     # First one is test data.
     # Second one is train data.
@@ -36,7 +23,7 @@ def two_param(data, param_dict):
     plt.figure(figsize=(12, 4))
 
     plt.subplot(1, 3, 1)
-    plt.imshow(data[0], cmap=GLOBAL_COLORMAP, aspect="auto")
+    plt.imshow(data[0], cmap=config["plot"]["colormap"], aspect="auto")
     plt.title("Test")
     for fn, lab in [
         (plt.xlabel, param_dict["x_name"]),
@@ -45,12 +32,12 @@ def two_param(data, param_dict):
         fn(f"${lab}$" if ("\\" in lab) else f"{lab}")
 
     plt.subplot(1, 3, 2)
-    plt.imshow(data[1], cmap=GLOBAL_COLORMAP, aspect="auto")
+    plt.imshow(data[1], cmap=config["plot"]["colormap"], aspect="auto")
     plt.colorbar()
 
     plt.title("Train")
     plt.subplot(1, 3, 3)
-    plt.imshow(data[0] - data[1], cmap=GLOBAL_COLORMAP, aspect="auto")
+    plt.imshow(data[0] - data[1], cmap=config["plot"]["colormap"], aspect="auto")
     plt.colorbar()
     plt.title("Difference")
 
@@ -71,11 +58,11 @@ def two_param(data, param_dict):
         )
 
 
-def line_param(data, param_dict, color_idx):
+def line_param(config: OmegaConf, data, param_dict, color_idx):
     # Wacky but I don't want to regen plots.
     try:
         xs = [x for x in zip(*data)]
-        # mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=plt.cm.get_cmap(GLOBAL_COLORMAP)(np.linspace(0, 1, len(xs))))
+        # mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=plt.cm.get_cmap(config["plot"]["colormap"])(np.linspace(0, 1, len(xs))))
     except Exception as e:
         xs = [data]
     for idx, x in enumerate(xs):
@@ -105,7 +92,7 @@ def line_param(data, param_dict, color_idx):
     plt.ylabel(f"{param_dict['au_name']}")
 
 
-def plot_sts_mi_heatmap(heatmap_args):
+def plot_sts_mi_heatmap(config: DictConfig, MI_X_pairings, MI_X_y_pairings, STS_X_pairings, STS_X_y_pairings):
     def plot_pairings(X_pairings, X_y_pairings, title):
         """
         Plot a 2D heatmap of either the MI or STS pairings.
@@ -141,13 +128,13 @@ def plot_sts_mi_heatmap(heatmap_args):
         vmin = 0
         vmax = max(np.max(X_pairings_np), np.max(X_y_pairings_np))
 
-        a1.imshow(X_pairings_np, cmap=GLOBAL_COLORMAP, aspect="auto", vmin=vmin, vmax=vmax)
+        a1.imshow(X_pairings_np, cmap=config["plot"]["colormap"], aspect="auto", vmin=vmin, vmax=vmax)
         a1.set_title(f"{title} X-X Pairings")
         a1.set_xlabel("Feature Index")
         a1.set_ylabel("Feature Index")
 
         a0.imshow(
-            X_y_pairings_np, cmap=GLOBAL_COLORMAP, aspect="auto", interpolation=None, vmin=vmin,
+            X_y_pairings_np, cmap=config["plot"]["colormap"], aspect="auto", interpolation=None, vmin=vmin,
             vmax=vmax
         )
         a0.set_title(f"{title} X-y Pairings")
@@ -167,20 +154,20 @@ def plot_sts_mi_heatmap(heatmap_args):
 
     plt.clf()
     plot_pairings(MI_X_pairings, MI_X_y_pairings, "MI")
-    plt.savefig(os.path.join(os.path.curdir, FIGURE_DIR, "MI_pairings.pdf"), dpi=300)
+    plt.savefig(os.path.join(config["path"]["figures"], "MI_pairings.pdf"), dpi=300)
     # Delete all conents in the sts_pairings directory
     for file in os.listdir(
-        os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "sts_pairings")
+        os.path.join(config["path"]["figures"], "sts_pairings")
     ):
         os.remove(
-            os.path.join(os.path.curdir, "redcap", FIGURE_DIR, "sts_pairings", file)
+            os.path.join(config["path"]["figures"], "sts_pairings", file)
         )
     plt.clf()
     heatmaps = []
-    if heatmap_args is not None:
-        heatmaps = heatmap_args.split(",")
+    if config["plot"]["heatmap"] is not None:
+        heatmaps = config["plot"]["heatmap"].split(",")
     else:
-        heatmaps = [STS_CACHE_FNAME]
+        heatmaps = [config["path"]["sts_cache"]]
     for heatmap in heatmaps:
         with open(heatmap, "rb") as f:
             data_dict = pickle.load(f)
@@ -191,7 +178,7 @@ def plot_sts_mi_heatmap(heatmap_args):
         plot_pairings(STS_X_pairings, STS_X_y_pairings, f"STS")
         plt.savefig(
             os.path.join(
-                os.path.curdir, FIGURE_DIR, f"STS_{heatmap_name}_pairings.pdf"
+                config["path"]["figures"], f"STS_{heatmap_name}_pairings.pdf"
             ),
             dpi=300,
         )
@@ -205,40 +192,36 @@ def swap_x(fn):
     with open(fn, "wb") as f:
         pickle.dump((s, p_d), f)
 
-
-if __name__ == "__main__":
+@hydra.main(version_base=None,
+            config_path="../../conf",
+            config_name="config")
+def main(config: DictConfig):
     # Get date of last made figure
     # figure_mods = sorted([os.stat(f).st_mtime for f in os.listdir(os.path.join(os.path.curdir, FIGURE_DIR))], reverse=True)
     # last_fig_t = figure_mods[0]
 
+    with open(config["path"]["mi_cache"], "rb") as f:
+        datadict = pickle.load(f)
+        MI_X_pairings = datadict["X_pairings"]
+        MI_X_y_pairings = datadict["X_y_pairings"]
+
+    # Unpiclke the STS cache
+    with open(config["path"]["sts_cache"], "rb") as f:
+        datadict = pickle.load(f)
+        STS_X_pairings = datadict["X_pairings"]
+        STS_X_y_pairings = datadict["X_y_pairings"]
+
+
     parser = argparse.ArgumentParser(prog="plot", description="Plot the results.")
-
-    parser.add_argument(
-        "-t",
-        "--tikz",
-        action="store",
-        default=False,
-        help="Make tikz figures?",
-        type=bool,
-    )
-    parser.add_argument(
-        "-m",
-        "--heatmap",
-        action="store",
-        default=None,
-        help="Just make the heatmaps if on.",
-    )
-    args = parser.parse_args()
-
     # Set matplotlib font to Times New Roman
     plt.rcParams["font.family"] = "Times New Roman"
 
-    if args.heatmap is not None:
+    if config["plot"]["heatmap"] is not None:
         # Plot the MI and STS pairings as well.
-        plot_sts_mi_heatmap(args.heatmap)
+        plot_sts_mi_heatmap(config, MI_X_pairings, MI_X_y_pairings, STS_X_pairings, STS_X_y_pairings)
         sys.exit()
 
-    results = os.listdir(os.path.join(os.path.curdir, RESULTS_DIR))
+    results = os.listdir(config["path"]["results"])
     new_figs = results
     score_map = defaultdict(list)
     for fname in tqdm(new_figs, desc="Plotting Figures"):
@@ -246,7 +229,7 @@ if __name__ == "__main__":
             continue
 
         data, param_dict = pickle.load(
-            open(os.path.join(os.path.curdir, RESULTS_DIR, fname), "rb")
+            open(os.path.join(config["path"]["results"], fname), "rb")
         )
         param_dict = defaultdict(str, param_dict)
         score_map[param_dict["au_name"]].append((data, param_dict))
@@ -257,10 +240,13 @@ if __name__ == "__main__":
         plt.title(f"{au_name} vs. N")
         for idx, (data, param_dict) in enumerate(items):
             if param_dict["type"] == "au_map":
-                two_param(data, param_dict)
+                two_param(config, data, param_dict)
             if param_dict["type"] == "au_n_line":
-                line_param(data, param_dict, idx)
+                line_param(config, data, param_dict, idx)
 
             plt.savefig(
-                os.path.join(os.path.curdir, FIGURE_DIR, f"{au_name}-N.pdf"), dpi=300
+                os.path.join(config["path"]["figures"], f"{au_name}-N.pdf"), dpi=300
             )
+
+if __name__ == "__main__":
+    main()

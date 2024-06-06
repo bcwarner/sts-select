@@ -1,0 +1,53 @@
+defaults:
+  - _self_
+  - path: ppsp
+  - data: ppsp
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+seed: 278797835
+
+# Old argparse arguments
+verbose: 1
+k_folds: 5
+feature_importance: False
+best_params: False
+best_feats: True
+feature_filter: False
+table_fmt: 
+  - "grid"
+  - "latex"
+clear_cache: False
+nested: False
+list_scorers: False
+feature_num: 40
+n_jobs: 1
+sel_fs: null
+sel_class: null
+prog_name: "train_eval"
+print_del_cols: False
+
+# Old model trainer argparse
+model_args:
+  batch_size: 8
+  epochs: 10
+  opt_params: null
+  device: cuda
+  overwrite: False
+
+table_args:
+  files: null
+  cache: null
+
+# Data
+path:
+  run_dir: ${path.root}
+
+plot:
+  colormap: viridis
+  heatmap: null

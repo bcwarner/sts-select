@@ -10,6 +10,7 @@ from collections import defaultdict
 from typing import Dict, Tuple
 
 import datasets as ds
+import hydra
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +18,7 @@ import pandas as pd
 import sentence_transformers
 import torch
 import transformers as tr
+from omegaconf import DictConfig
 from sentence_transformers import (LoggingHandler, SentencesDataset,
                                    SentenceTransformer, losses, models, util)
 from sentence_transformers.evaluation import EmbeddingSimilarityEvaluator
@@ -64,19 +66,19 @@ def reset_env_vars():
         os.environ[k] = v
 
 
-def model_path(dset_name, model_name):
-    return os.path.join(os.path.dirname(__file__), f"models/{model_name}/{dset_name}/")
+def model_path(config, dset_name, model_name):
+    return os.path.join(config["path"]["sts_models_path"], f"{model_name}/{dset_name}/")
 
 
 dset_options = [CLINICAL_VOCAB_NAME, GEN_VOCAB_NAME, COMBINED_VOCAB_NAME]
-model_options = [#"bert-base-uncased", # General LLMs
+model_options = ["bert-base-uncased", # General LLMs
                  #"allenai/scibert_scivocab_uncased",
-                 #"sentence-transformers/all-MiniLM-L12-v2",
+                 "sentence-transformers/all-MiniLM-L12-v2",
                  #"sentence-transformers/all-mpnet-base-v2",
                  #"sentence-transformers/all-distilroberta-v1",
                  # Clinical LLMs
-                 #"emilyalsentzer/Bio_ClinicalBERT",
-                 #"allenai/biomed_roberta_base",
+                 "emilyalsentzer/Bio_ClinicalBERT",
+                 "allenai/biomed_roberta_base",
                  "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext",
                  "microsoft/biogpt",
                  "UFNLP/gatortron-base",
@@ -84,17 +86,10 @@ model_options = [#"bert-base-uncased", # General LLMs
                  #"other/FastText",
 ]
 
-if __name__ == "__main__":
-    # Arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--epochs", type=int, default=10)
-    parser.add_argument("--opt_params", type=str, default="")
-    parser.add_argument("--seed", type=int, default=RANDOM_STATE)
-    parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--overwrite", type=bool, default=False)
-    args = parser.parse_args()
-
+@hydra.main(version_base=None,
+            config_path="../../conf",
+            config_name="config")
+def main(config: DictConfig):
     # Set environment variables
     set_env_vars()
 
@@ -102,8 +97,8 @@ if __name__ == "__main__":
 
     for dset_name, model_name in itertools.product(dset_options, model_options):
         # Does this model exist? Yes => Skip if desired
-        save_location = model_path(dset_name, model_name)
-        if os.path.exists(save_location) and not args.overwrite:
+        save_location = model_path(config, dset_name, model_name)
+        if os.path.exists(save_location) and not config["model_args"]["overwrite"]:
             print(
                 f"Model {model_name} already exists for dataset {dset_name}. Skipping."
             )
@@ -113,13 +108,13 @@ if __name__ == "__main__":
         print(stage_format.format(f"Loading Dataset {dset_name}"))
 
         train_data = ds.load_from_disk(
-            os.path.join(os.path.dirname(__file__), dset_name)
+            os.path.join(config["path"]["sts_data_path"], dset_name)
         )
 
         # Prepare the model
         print(stage_format.format("Preparing Model"))
         if "other" not in model_name:
-            model = SentenceTransformer(model_name, device=args.device)
+            model = SentenceTransformer(model_name, device=config["model_args"]["device"])
             # Convert data to InputExamples
             print(stage_format.format("Converting Data to InputExamples"))
             mapper = lambda x: InputExample(
@@ -128,7 +123,7 @@ if __name__ == "__main__":
             train_data_mapped = [mapper(x) for x in train_data]
             train_data_mapped = SentencesDataset(train_data_mapped, model=model)
             train_dataloader = DataLoader(
-                train_data_mapped, shuffle=True, batch_size=args.batch_size
+                train_data_mapped, shuffle=True, batch_size=config["model_args"]["batch_size"]
             )
             train_loss = losses.CosineSimilarityLoss(model)
             if hasattr(model, "pad_token") and model.pad_token is None:
@@ -147,7 +142,7 @@ if __name__ == "__main__":
 
         model.fit(
             train_objectives=[(train_dataloader, train_loss)],
-            epochs=args.epochs,
+            epochs=config["model_args"]["epochs"],
             warmup_steps=100,
         )
 
@@ -156,7 +151,7 @@ if __name__ == "__main__":
             print(stage_format.format("Evaluating Model"))
             # Evaluator
             evaluator = EmbeddingSimilarityEvaluator.from_input_examples(
-                train_data_mapped, batch_size=args.batch_size, write_csv=False
+                train_data_mapped, batch_size=config["model_args"]["batch_size"], write_csv=False
             )
             # Evaluate
             eval_loss = evaluator(model, train_dataloader)
@@ -183,3 +178,6 @@ if __name__ == "__main__":
     reset_env_vars()
 
     print("Done")
+
+if __name__ == "__main__":
+    main()

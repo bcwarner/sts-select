@@ -4,19 +4,22 @@ import os
 import sys
 from collections import OrderedDict
 
+import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig
 from pandas import DataFrame
 from pandas.core.dtypes.common import is_numeric_dtype
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import tikzplotlib
 from redcap_sts_scorers.train import dset_options, model_options
 
 
-def nice_name_map(x, latex=False):
+def nice_name_map(x, latex=False, none_name=None):
+    if pd.isna(x) and none_name is not None:
+        return none_name
     map = {
         "feature_selector": "Feature Selector",
         "scorer": "Scorer",
@@ -72,45 +75,29 @@ def nice_name_map(x, latex=False):
         return map[x]
     return x
 
-if __name__ == "__main__":
+@hydra.main(version_base=None,
+            config_path="../../conf",
+            config_name="config")
+def main(config: DictConfig) -> None:
     # Parse arguments
     # - xlsx files to include
     # - xlsx fname to be cached as for future use
     # - what kind of summarization we want to do
     # - what kind of column we should group by
-    parser = argparse.ArgumentParser(
-        prog="summarize", description="Summarize the results."
-    )
-    parser.add_argument(
-        "-f",
-        "--files",
-        action="store",
-        default=None,
-        help="Files to include in the summary.",
-        nargs="+",
-    )
-    parser.add_argument(
-        "-c",
-        "--cache",
-        action="store",
-        default=None,
-        help="Cache the results to this file.",
-    )
-    args = parser.parse_args()
 
     # Set matplotlib font to Times New Roman
     plt.rcParams["font.family"] = "Times New Roman"
 
     data = None
     # Load the data
-    if len(args.files) == 1:
-        if args.files[0].endswith(".txt"):
+    if len(config["table_args"]["files"]) == 1:
+        if config["table_args"]["files"][0].endswith(".txt"):
             # For when only a table is printed and no Excel file is saved.
             # This follows the LaTeX style since the grid style is too hard to parse.
             cols = None
             data = []
             sub_columns = ["feature_selector", "scorer", "model", "dset"]
-            for line in open(args.files[0]):
+            for line in open(os.path.join(config["path"]["results"], config["table_args"]["files"][0])):
                 if "&" not in line:
                     continue
                 line = line.replace("\\\\", "")
@@ -140,39 +127,37 @@ if __name__ == "__main__":
                     data.append(dict(zip(cols, row)))
             data = pd.DataFrame(data)
             # Save the data to an Excel file
-            data.to_excel(args.files[0].replace(".txt", ".xlsx"))
-        elif args.files[0].endswith(".xlsx"):
-            data = pd.read_excel(args.files[0])
+            data.to_excel(config["table_args"]["files"][0].replace(".txt", ".xlsx"))
+        elif config["table_args"]["files"][0].endswith(".xlsx"):
+            data = pd.read_excel(os.path.join(config["path"]["results"], config["table_args"]["files"][0]))
     else:
         data = []
-        for fname in args.files:
+        for fname in config["table_args"]["files"]:
             data.append(pd.read_excel(fname))
 
         data = pd.concat(data)
 
-        if args.cache:
-            data.to_excel(args.cache)
+        if config["table_args"]["cache"]:
+            data.to_excel(config["table_args"]["cache"])
 
     # Summarization preprocessing:
     # Add a column indicating test-train difference for each score
     for col in data.columns:
         if col.endswith("_test"):
             data[col.replace("_test", "_diff")] = (
-                data[col] - data[col.replace("_test", "_train")]
+                    data[col] - data[col.replace("_test", "_train")]
             )
 
-    plots_dir = os.path.join(os.path.dirname(args.files[0]), "plots")
+    plots_dir = os.path.join(config["path"]["figures"])
     if not os.path.exists(plots_dir):
         os.makedirs(plots_dir)
 
-
-
     # Summarizations:
     # - Group by feature_selector, scorer, model, and dset individually
-    def group_by(hyperparam_col, score_col, score_col2=None):
+    def group_by(hyperparam_col, score_col, score_col2=None, none_name=None):
         # Copy the data and rename the entries in the hyperparam_col to be nicer
         data_ = data.copy()
-        data_[hyperparam_col] = data_[hyperparam_col].apply(nice_name_map)
+        data_[hyperparam_col] = data_[hyperparam_col].apply(lambda x: nice_name_map(x, none_name=none_name))
 
         if score_col2 is not None:
             plt.subplot(1, 2, 1)
@@ -187,9 +172,10 @@ if __name__ == "__main__":
                 data_[data_[hyperparam_col] == opt][score_col],
                 positions=[idx],
                 vert=False,
+                showmeans=True,
             )
         plt.xlabel(nice_name_map(score_col))
-        plt.ylabel(nice_name_map(hyperparam_col))
+        plt.ylabel(nice_name_map(hyperparam_col, none_name=none_name))
         # If there's a / in the opts, delete the part before the /
         opts = [x.split("/")[-1] if "/" in x else x for x in opts]
         plt.yticks(ticks=np.arange(len(opts)), labels=opts)
@@ -202,21 +188,22 @@ if __name__ == "__main__":
                     data_[data_[hyperparam_col] == opt][score_col2],
                     positions=[idx],
                     vert=False,
+                    showmeans=True,
                 )
             plt.xlabel(nice_name_map(score_col2))
             plt.yticks(ticks=np.arange(len(opts)), labels=["" for _ in opts])
 
         plt.tight_layout()
         plt.savefig(os.path.join(plots_dir, f"{hyperparam_col}_{score_col}.pdf"))
-        tikzplotlib.save(os.path.join(plots_dir, f"{hyperparam_col}_{score_col}.tex"))
         plt.clf()
 
         # Histogram of the score_col grouped by hyperparam_col
 
     group_by("feature_selector", "roc_auc_score_test", "roc_auc_score_diff")
-    group_by("scorer", "roc_auc_score_test", "roc_auc_score_diff")
+    group_by("scorer", "roc_auc_score_test", "roc_auc_score_diff", none_name="Baseline")
     group_by("model", "roc_auc_score_test")
     group_by("dset", "roc_auc_score_test")
+
     # Do a groupby for scorer + feature_selector
 
     # - Table with all baseline feature selection + best non-traditional feature selectors.
@@ -230,7 +217,7 @@ if __name__ == "__main__":
         # + All MI scorers
         results = pd.concat([results, df[df["scorer"] == "MIScorer"]], axis=0)
         # + whichever ft-model is best
-        m_ = df[df["scorer"] != "MIScorer"].groupby("model").max()["roc_auc_score_test"]
+        m_ = df[~df["model"].isnull()].groupby("model").max()["roc_auc_score_test"]
         best_model = m_.keys()[m_.argmax()]
         results = pd.concat([results, df[df["model"] == best_model]], axis=0)
         # Drop the model column
@@ -392,7 +379,7 @@ if __name__ == "__main__":
             multicolumn_format="|l|",
             column_format="|" + "|".join(["l"] * results.shape[1]) + "|",
             caption=f"Results for {classifier} with baseline feature selection methods "
-            f"and using {best_model} to score features.",
+                    f"and using {best_model} to score features.",
         )
         out = out.replace("{} &", "")
 
@@ -401,7 +388,11 @@ if __name__ == "__main__":
         print(out)
         print("==============================")
 
-    table_by_classifier("MLP")
+    for classifier in data["classifier"].unique():
+        table_by_classifier(classifier)
+
+    print("=========")
+
     # - Table with best performing overall vs. baselines
 
     def table_all():
@@ -448,9 +439,9 @@ if __name__ == "__main__":
                         if np.round(x, 3) == np.round(results[col].max(), 3):
                             return r"\textbf{" + fmt + "}"
                         elif (
-                            "_diff" in col
-                            and abs(np.round(x, 3))
-                            == abs(np.round(results[col], 3)).min()
+                                "_diff" in col
+                                and abs(np.round(x, 3))
+                                == abs(np.round(results[col], 3)).min()
                         ):
                             # There's a few perfectly random results, so we need to use results
                             return r"\textbf{" + fmt + "}"
@@ -528,3 +519,6 @@ if __name__ == "__main__":
             table_by_classifier(classifier)
 
     table_all()
+
+if __name__ == "__main__":
+    main()
