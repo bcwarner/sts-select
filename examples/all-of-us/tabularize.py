@@ -5,7 +5,8 @@ import pandas
 import os
 
 # This query represents dataset "pain_v_ppsp" for domain "person" and was generated for All of Us Registered Tier Dataset v7
-dataset_99005751_person_sql = """
+dataset_person_sql = """
+>>>>>>> ac2969dc0e3e911ba093008f2e963de4d49d4e93
     SELECT
         person.person_id,
         person.gender_concept_id,
@@ -124,7 +125,7 @@ dataset_99005751_person_sql = """
                     AND is_standard = 0 )) criteria ) )"""
 
 dataset_person_df = pandas.read_gbq(
-    dataset_99005751_person_sql,
+    dataset_person_sql,
     dialect="standard",
     use_bqstorage_api=("BIGQUERY_STORAGE_API_ENABLED" in os.environ),
     progress_bar_type="tqdm_notebook")
@@ -241,7 +242,7 @@ dataset_survey_sql = """
             )"""
 
 dataset_survey_df = pandas.read_gbq(
-    dataset_99005751_survey_sql,
+    dataset_survey_sql,
     dialect="standard",
     use_bqstorage_api=("BIGQUERY_STORAGE_API_ENABLED" in os.environ),
     progress_bar_type="tqdm_notebook")
@@ -411,13 +412,14 @@ dataset_procedure_sql = """
             `""" + os.environ["WORKSPACE_CDR"] + """.concept` p_source_concept 
                 ON procedure.procedure_source_concept_id = p_source_concept.concept_id"""
 
-dataset_procedure_df = pandas.read_gbq(
-    dataset_procedure_sql,
-    dialect="standard",
-    use_bqstorage_api=("BIGQUERY_STORAGE_API_ENABLED" in os.environ),
-    progress_bar_type="tqdm_notebook")
 
-dataset_procedure_df.head(5)
+#dataset_procedure_df = pandas.read_gbq(
+#    dataset_procedure_sql,
+#    dialect="standard",
+#    use_bqstorage_api=("BIGQUERY_STORAGE_API_ENABLED" in os.environ),
+#    progress_bar_type="tqdm_notebook")
+
+#dataset_procedure_df.head(5)
 import pandas
 import os
 
@@ -637,48 +639,47 @@ def get_column_mappers(config: DictConfig):
 #%%
 
 
-@hydra.main(config_path="conf", config_name="config")
+from tqdm import tqdm
+
+@hydra.main(config_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), "conf"), config_name="config")
 def main(config: DictConfig):
     # Get the list of patients
     patients = dataset_person_df["person_id"].unique()
     # Test if there's a condition matching the criteria for each patient
     columns, column_to_type = get_column_mappers(config)
     conditions = config["data"]["y_labels"]
-    for patient in patients:
-        patient_conditions = dataset_condition_df[dataset_condition_df["person_id"] == patient]["condition_concept_id"].unique()
-        y_labels = [1 if condition in patient_conditions else 0 for condition in conditions]
+
+    results = []
+    for patient in tqdm(patients):
+        patient_conditions = dataset_condition_df[dataset_condition_df["person_id"] == patient]["source_concept_name"].unique()
         # Serialize all the questions into a dict
         questions = {column: 0 for column in columns}
         for index, row in dataset_survey_df[dataset_survey_df["person_id"] == patient].iterrows():
             if row["question"] not in column_to_type:
                 continue
-            if row[column_to_type[row["question"]][0]] == "one_hot":
+            if column_to_type[row["question"]][0]  == "one_hot":
                 # Find column name, then one hot name
+                # Don't split here
                 cand_names = [x for x in columns if row["question"] in x]
-                one_hot_name = filter(lambda x: row["answer"] in x, cand_names)[0]
+                one_hot_name = [x for x in filter(lambda x: row["answer"] in x.split(",")[1], cand_names)]
+                if len(one_hot_name) == 0:
+                    continue
                 questions[one_hot_name] = 1
             else:
                 try:
                     questions[row["question"]] = int(re.match(r"\d+", row["answer"]).group(0))
-                except ValueError:
+                except (ValueError, AttributeError):
                     questions[row["question"]] = 1 if "yes" in row["answer"].lower() else 0
-            questions[row["question"]] = row["answer"]
         for condition in conditions:
             # Serialize the patient data
-            questions[condition] = y_labels[conditions.index(condition)]
+            patient_conditions = [x for x in patient_conditions if not pd.isna(x)]
+            questions[condition] = 1 if any(["chronic" in x.lower() for x in patient_conditions]) else 0
+
+        results.append(questions)
 
     # Save the data
-    df = pd.DataFrame(questions)
+    df = pd.DataFrame(results)
+    df.to_csv(config["path"]["source"])
 
-    # Find the most recent cache.
-    files = os.listdir(config["path"]["cache"])
-    files = sorted(files, key=lambda x: os.path.getmtime(os.path.join(config["path"]["cache"], x)))
-    cache_file = files[-1]
-    with open(os.path.join(config["path"]["cache"], cache_file), "rb") as f:
-        cache = pickle.load(f)
-        acceptable_features = set(cache["X_names"] + cache["y_names"])
-
-    df = df[acceptable_features]
-    df.to_excel(config["data"]["source"])
-#%% md
-# 
+if __name__ == "__main__":
+    main()

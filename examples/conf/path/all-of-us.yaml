@@ -1,4 +1,4 @@
-root: ~/
+root: ~/workspaces/stsfeatureselection/
 source: ${path.root}/source_data.xlsx
 redcap: null
 results: ${path.root}/results
