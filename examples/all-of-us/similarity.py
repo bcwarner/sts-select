@@ -8,6 +8,7 @@ import rootutils
 import hydra
 import numpy as np
 from tqdm import tqdm
+import pickle
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -57,6 +58,10 @@ def get_codebook_columns(config: DictConfig) -> list:
             version_base="1.1")
 def main(config: DictConfig) -> None:
     columns = get_codebook_columns(config)
+    # Save the columns to a file
+    with open(os.path.join(config["path"]["column_names"]), "wb") as f:
+        pickle.dump(columns, f)
+
     breakpoint()
 
     # Get all of the models in the fine-tuned directory

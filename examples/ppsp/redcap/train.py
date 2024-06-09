@@ -155,6 +155,15 @@ def filter_data(config, df: pd.DataFrame):
             if data["important "] == 1:
                 acceptable_features.add(data["Name"])        
 
+    # If there's a column list, insert zero columns for ones not present in the data.
+    # Then reindex based on the column list. 
+    if "column_names" in config["path"]:
+        column_names = pickle.load(open(config["path"]["column_names"], "rb"))
+        for col in column_names:
+            if col not in df.columns:
+                df[col] = 0
+        df = df.reindex(column_names, axis=1)
+
     # Attempt to categorize columns as one of: continuous, binary, one-hot, time, external data (pngs)
     image_ext_filter = re.compile("(jpg|jpeg|tiff|png|gif|svg)", re.IGNORECASE)
 
@@ -867,6 +876,13 @@ def main(config: DictConfig) -> None:
         X_questions,
         y_questions,
     ) = prepare_source_data(config)
+
+    # Drop a random number of examples.
+    if "example_feature_ratio" in config["data"]:
+        df_filtered = df_filtered.sample(
+            n=int(df_filtered.shape[0] * config["data"]["example_feature_ratio"]),
+            random_state=config["seed"]
+        )
 
     feature_selectors = {
         ("Identity",): (FunctionTransformer(), {}),
