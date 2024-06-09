@@ -245,8 +245,12 @@ def filter_data(config, df: pd.DataFrame):
 
         elif is_numeric_dtype(col_dtype):
             kept_cols.append(col)
-            transformers[col_name].append(Normalizer)
-            transformers[col_name].append(SimpleImputer)
+            # Determine if binary or continuous.
+            if len(col.unique()) == 2 and config["data"]["name"] != "ppsp":
+                transformers[col_name].append("SimpleImputerS")
+            else:
+                transformers[col_name].append(Normalizer)
+                transformers[col_name].append(SimpleImputer)
 
     # Get rid of images, text with large data.
     df_filtered = pd.DataFrame(kept_cols)  # DO NOT TRANSPOSE
@@ -484,28 +488,33 @@ def compute_similarities(
         verbose=config["verbose"],
     )
 
-    scorers[("STSScorer", "ClinicalBERT", "ext")] = ClinicalBERTSTSScorer(
-        X,
-        y_truth,
-        X_questions,
-        y_questions,
-        cache=config["path"]["sts_cache"],
-        verbose=config["verbose"],
-    )
+    if config["data"]["name"] == "ppsp":
+        # TODO: ADD THIS for All of Us
+        scorers[("STSScorer", "ClinicalBERT", "ext")] = ClinicalBERTSTSScorer(
+            X,
+            y_truth,
+            X_questions,
+            y_questions,
+            cache=config["path"]["sts_cache"],
+            verbose=config["verbose"],
+        )
 
-    scorers[("LinearScorer", "ClinicalBERT", "ext")] = LinearScorer(
-        X,
-        y_truth,
-        scorers=[scorers[("MIScorer", None, None)], scorers[("STSScorer", "ClinicalBERT", "ext")]],
-        alpha=[1, 1],
-        verbose=config["verbose"],
-    )
+        scorers[("LinearScorer", "ClinicalBERT", "ext")] = LinearScorer(
+            X,
+            y_truth,
+            scorers=[scorers[("MIScorer", None, None)], scorers[("STSScorer", "ClinicalBERT", "ext")]],
+            alpha=[1, 1],
+            verbose=config["verbose"],
+        )
 
     # Product of models and datasets for each possible BaseSTS and LinearScorer.
     for dset, model in itertools.product(dset_options, model_options):
         print(f"Loading {model} for {dset}")
         sts_name = ("STSScorer", model, dset)
         sts_cache_name = f"STS_{model}_{dset}.pkl".replace("/", "-")
+        if not os.path.exists(os.path.join(config["path"]["cache"], sts_cache_name)) and config["data"]["name"] == "all-of-us":
+            print(f"Skipping {model} for {dset} due to lack of cache.")
+            continue
         if "other" in model:
             if dset != GEN_VOCAB_NAME:
                 continue
