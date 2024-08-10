@@ -146,7 +146,6 @@ def extract_outcome_ppsp(config, redcap: pd.DataFrame):
 # Select only the things that are class labels or continuous.
 def filter_data(config, df: pd.DataFrame):
     # Get list of acceptable features.
-
     acceptable_features = set()
 
     if config["feature_filter"]:
@@ -157,12 +156,17 @@ def filter_data(config, df: pd.DataFrame):
 
     # If there's a column list, insert zero columns for ones not present in the data.
     # Then reindex based on the column list. 
-    if "column_names" in config["path"]:
-        column_names = pickle.load(open(config["path"]["column_names"], "rb"))
-        for col in column_names:
-            if col not in df.columns:
-                df[col] = 0
-        df = df.reindex(column_names, axis=1)
+    #if "column_names" in config["path"]:
+    #    column_names = pickle.load(open(config["path"]["column_names"], "rb"))
+    #    for col in column_names:
+    #        if col not in df.columns:
+    #            df[col] = 0
+    #    
+    #    if config["data"]["label"] not in column_names:
+    #        column_names.append(config["data"]["label"])
+    #   df = df.reindex(column_names, axis=1)
+    if "Unnamed: 0" in df.columns:
+        df = df.drop(columns=["Unnamed: 0"])
 
     # Attempt to categorize columns as one of: continuous, binary, one-hot, time, external data (pngs)
     image_ext_filter = re.compile("(jpg|jpeg|tiff|png|gif|svg)", re.IGNORECASE)
@@ -196,11 +200,17 @@ def filter_data(config, df: pd.DataFrame):
         # NA out for deletion later.
         df.loc[:, col_name] = pd.NA
         bad_res["fail"].append(col_name)
-
-    X_before_index = df.columns.get_loc(config["data"]["X_before"])
+    
+    if "X_before" in config["data"]:
+        X_before_index = df.columns.get_loc(config["data"]["X_before"])
+    
+    seen_col_names = defaultdict(int)
     for col_idx, col_name in enumerate(df):
-        col = df[col_name]
+        col = df.iloc[:, col_idx]
         col_dtype = col.dtype
+        if col_name in seen_col_names:
+            col = col.rename(f"{col_name}-{seen_col_names[col_name]}")
+        seen_col_names[col_name] += 1
 
         # Keep the actual labels
         if col_name == config["data"]["label"]:
@@ -208,7 +218,7 @@ def filter_data(config, df: pd.DataFrame):
             continue
 
         # If the column is after X_before, skip it.
-        if (config["data"]["X_before"] is not None and col_idx > X_before_index and col_name not in
+        if ("X_before" in config["data"] and col_idx > X_before_index and col_name not in
                 config["data"]["questions"]):
             continue
 
@@ -276,6 +286,12 @@ def filter_data(config, df: pd.DataFrame):
         print("-----------------------")
 
     print(f"Total features (including one-hot): {len(kept_cols)}")
+
+    # Randomly drop some of the examples (columns) here.
+    new_example_count = config.data.example_feature_ratio * len(kept_cols)
+    ex_to_drop = np.random.choice(df_filtered.columns, len(df_filtered.columns) - new_example_count, replace=False)
+    df_filtered = df_filtered.drop(columns=ex_to_drop)
+    print(f"Total rows: {len(df_filtered.columns)}")
 
     return df_filtered, transformers
 
@@ -489,6 +505,7 @@ def compute_similarities(
     X = preprocessor.fit_transform(X)
     scorers = {}
 
+    #if config["data"]["name"] == "ppsp":
     scorers[("MIScorer", None, None)] = MIScorer(
         X,
         y_truth,
@@ -520,7 +537,7 @@ def compute_similarities(
     for dset, model in itertools.product(dset_options, model_options):
         print(f"Loading {model} for {dset}")
         sts_name = ("STSScorer", model, dset)
-        sts_cache_name = f"STS_{model}_{dset}.pkl".replace("/", "-")
+        sts_cache_name = f"{model}_{dset}.pkl".replace("/", "_")
         if not os.path.exists(os.path.join(config["path"]["cache"], sts_cache_name)) and config["data"]["name"] == "all-of-us":
             print(f"Skipping {model} for {dset} due to lack of cache.")
             continue
@@ -550,7 +567,10 @@ def compute_similarities(
                 verbose=config["verbose"],
             )
 
+        
         scorers[sts_name] = sts_scorer
+        
+        #if config["data"]["name"] == "ppsp":
         linear_name = ("LinearScorer", model, dset)
         linear_scorer = LinearScorer(
             X,
@@ -588,6 +608,13 @@ def prepare_source_data(config: DictConfig):
 
     X = df_filtered.drop(config["data"]["label"], axis=0).T
     y_truth = df_filtered.loc[config["data"]["label"]]
+    
+    import csv
+    # Write the list of features to a CSV file
+    with open(config["path"]["column_csv"], "w") as f:
+        writer = csv.writer(f)
+        writer.writerow(df_filtered.index)
+
     scorers = compute_similarities(
         config, X_questions, y_questions, X, y_truth, preprocessor, clear_cache=config["clear_cache"]
     )
@@ -881,7 +908,8 @@ def main(config: DictConfig) -> None:
     if "example_feature_ratio" in config["data"]:
         df_filtered = df_filtered.sample(
             n=int(df_filtered.shape[0] * config["data"]["example_feature_ratio"]),
-            random_state=config["seed"]
+            random_state=config["seed"],
+            axis=1
         )
 
     feature_selectors = {
@@ -911,7 +939,8 @@ def main(config: DictConfig) -> None:
             ),
             {"feature_selector__estimator__C": np.logspace(-2, 0, 10)},
         ),
-    }
+        }
+    breakpoint()
     for scorer in scorers.keys():
         hyperparam_dict = {
             "feature_selector__n_features": [config["feature_num"]],
@@ -948,20 +977,21 @@ def main(config: DictConfig) -> None:
         sys.exit(0)
 
     classifiers = {
-        "XGBoost": (
-            XGBClassifier(
-                objective="binary:hinge",
-                eval_metric=roc_auc_score,
-                use_label_encoder=False,
-                random_state=config["seed"],
-                verbosity=max(config["verbose"] - 1, 0),
-                max_leaves=3,
-                max_depth=3,
-                alpha=0.1,
-                eta=0.05,
-            ),
-            {}
-        ),
+        #"XGBoost": (
+        #    XGBClassifier(
+        #        objective="binary:hinge",
+        #        eval_metric=roc_auc_score,
+        #        use_label_encoder=False,
+        #        random_state=config["seed"],
+        #        verbosity=max(config["verbose"] - 1, 0),
+        #        scale_pos_weight=50,
+        #        #max_leaves=3,
+        #        #max_depth=3,
+        #        #alpha=0.1,
+        #        #eta=0.05,
+        #    ),
+        #    {}
+        #),
         "LinearSVM": (
             LinearSVC(random_state=config["seed"], dual=True),
             {

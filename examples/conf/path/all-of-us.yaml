@@ -1,5 +1,6 @@
-root: ~/workspaces/stsfeatureselection/
+root: /home/jupyter/workspaces/stsfeatureselection
 source: ${path.root}/source_data.xlsx
+column_csv: ${path.root}/source_columns.csv
 redcap: null
 results: ${path.root}/results
 figures: ${path.root}/figures
@@ -8,3 +9,4 @@ sts_cache: ${path.cache}/sem_sim.pk
 mi_cache: ${path.cache}/mi_sim.pk
 sts_models_path: ${path.root}/sts_scorers/models 
 sts_data_path: ${path.root}/sts_scorers
+#column_names: ${path.cache}/column_names.pk

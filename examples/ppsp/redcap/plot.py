@@ -167,8 +167,10 @@ def plot_sts_mi_heatmap(config: DictConfig, MI_X_pairings, MI_X_y_pairings, STS_
     if config["plot"]["heatmap"] is not None:
         heatmaps = config["plot"]["heatmap"].split(",")
     else:
-        heatmaps = [config["path"]["sts_cache"]]
+        heatmaps = [os.path.join(config["path"]["cache"], x) for x in os.listdir(config["path"]["cache"])]
     for heatmap in heatmaps:
+        if ".pkl" not in heatmap:
+            continue
         with open(heatmap, "rb") as f:
             data_dict = pickle.load(f)
             STS_X_pairings = data_dict["X_pairings"]
@@ -206,20 +208,20 @@ def main(config: DictConfig):
         MI_X_y_pairings = datadict["X_y_pairings"]
 
     # Unpiclke the STS cache
-    with open(config["path"]["sts_cache"], "rb") as f:
-        datadict = pickle.load(f)
-        STS_X_pairings = datadict["X_pairings"]
-        STS_X_y_pairings = datadict["X_y_pairings"]
+    #with open(config["path"]["sts_cache"], "rb") as f:
+    #    datadict = pickle.load(f)
+    STS_X_pairings = None #datadict["X_pairings"]
+    STS_X_y_pairings = None #datadict["X_y_pairings"]
 
 
     parser = argparse.ArgumentParser(prog="plot", description="Plot the results.")
     # Set matplotlib font to Times New Roman
     plt.rcParams["font.family"] = "Times New Roman"
 
-    if config["plot"]["heatmap"] is not None:
-        # Plot the MI and STS pairings as well.
-        plot_sts_mi_heatmap(config, MI_X_pairings, MI_X_y_pairings, STS_X_pairings, STS_X_y_pairings)
-        sys.exit()
+    #if config["plot"]["heatmap"] is not None:
+    # Plot the MI and STS pairings as well.
+    plot_sts_mi_heatmap(config, MI_X_pairings, MI_X_y_pairings, STS_X_pairings, STS_X_y_pairings)
+    #sys.exit()
 
     results = os.listdir(config["path"]["results"])
     new_figs = results
