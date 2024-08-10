@@ -8,3 +8,4 @@ sts_cache: ${path.cache}/sem_sim.pk
 mi_cache: ${path.cache}/mi_sim.pk
 sts_models_path: ${path.root}/sts_scorers/models 
 sts_data_path: ${path.root}/sts_scorers
+column_names: /run/user/1001/gvfs/smb-share:server=storage1.ris.wustl.edu,share=sharout/Active/P5/redcap-modeling/examples/all-of-us/cache/source_columns.csv
