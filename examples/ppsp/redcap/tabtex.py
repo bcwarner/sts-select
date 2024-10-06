@@ -8,6 +8,7 @@ import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.stats
 from omegaconf import DictConfig
 from pandas import DataFrame
 from pandas.core.dtypes.common import is_numeric_dtype
@@ -65,7 +66,9 @@ def nice_name_map(x, latex=False, none_name=None):
         "StdDevSelector": "Std. Dev." if not latex else "Std. Dev.",
         "MIScorer": "MI" if not latex else "MI",
         "STSScorer": "STS" if not latex else "STS",
-        "LinearScorer": "MI & STS" if not latex else r"MI \& STS",
+        "LinearScorer-MIScorer": "MI & STS" if not latex else r"MI \& STS",
+        "LinearScorer-FScorer": "MI & F-Score" if not latex else r"MI \& F-Score",
+        "LinearScorer-PearsonsRScorer": "MI & Pearson's r" if not latex else r"MI \& Pearson's $r$",
     }
     if x in map and isinstance(map[x], tuple):
         return map[x]
@@ -154,9 +157,12 @@ def main(config: DictConfig) -> None:
 
     # Summarizations:
     # - Group by feature_selector, scorer, model, and dset individually
-    def group_by(hyperparam_col, score_col, score_col2=None, none_name=None):
+    def group_by(hyperparam_col, score_col, score_col2=None, none_name=None, clf=None):
         # Copy the data and rename the entries in the hyperparam_col to be nicer
         data_ = data.copy()
+        # If model is not None, filter out the data to only include the model
+        if clf is not None:
+            data_ = data_[data_["classifier"] == clf]
         data_[hyperparam_col] = data_[hyperparam_col].apply(lambda x: nice_name_map(x, none_name=none_name))
 
         if score_col2 is not None:
@@ -194,15 +200,88 @@ def main(config: DictConfig) -> None:
             plt.yticks(ticks=np.arange(len(opts)), labels=["" for _ in opts])
 
         plt.tight_layout()
-        plt.savefig(os.path.join(plots_dir, f"{hyperparam_col}_{score_col}.pdf"))
+        clf_nice = clf.replace("/", "_") if clf is not None else "all"
+        plt.savefig(os.path.join(plots_dir, f"{hyperparam_col}_{score_col}_{clf_nice}.pdf"))
         plt.clf()
 
         # Histogram of the score_col grouped by hyperparam_col
 
-    group_by("feature_selector", "roc_auc_score_test", "roc_auc_score_diff")
-    group_by("scorer", "roc_auc_score_test", "roc_auc_score_diff", none_name="Baseline")
-    group_by("model", "roc_auc_score_test")
-    group_by("dset", "roc_auc_score_test")
+    def group_by_stats_test(hyperparam_col, baseline_col, score_cols, none_name="Baseline"):
+        # Copy the data and rename the entries in the hyperparam_col to be nicer
+        results = []
+        def ttest_str(baseline, group_data):
+            ttest = scipy.stats.ttest_ind(
+                baseline,
+                group_data
+            )
+            avg_diff = group_data.mean() - baseline.mean()
+            score_col_results[(score_col, "$\mu_S - \mu_B$")] = f"${avg_diff:.3f}$"
+            pvalue_text = f"$<{ttest.pvalue:.4f}" if ttest.pvalue > 1e-4 else (
+                        f"$<{ttest.pvalue:.2e}".replace("e", "\cdot 10^{") + "}")
+            return pvalue_text + ("$$^*$" if ttest.pvalue < 0.05 else "$")
+
+        for clf in list(data["classifier"].unique()) + ["All"]:
+            if clf == "All":
+                data_ = data.copy()
+            else:
+                data_ = data.copy()[data["classifier"] == clf]
+            data_[hyperparam_col] = data_[hyperparam_col].apply(lambda x: nice_name_map(x, none_name=none_name))
+            # Get baseline groups and convert to Numpy
+            # Get the rest of the groupings
+            groups = data_[~data_[baseline_col].isna()][hyperparam_col].unique()
+            for group in groups:
+                score_col_results = {}
+                for score_col in score_cols:
+                    baseline = data_[data_[baseline_col].isna()][score_col].to_numpy()
+                    group_data = data_[data_[hyperparam_col] == group][score_col].to_numpy()
+                    score_col_results[(score_col, "$p$")] = ttest_str(baseline, group_data)
+                results.append({
+                    (None, "Classifier"): clf,
+                    (None, nice_name_map(hyperparam_col, latex=True)): group,
+                    **score_col_results
+                })
+            # All hyperparameter groups:
+            score_col_results = {}
+            for score_col in score_cols:
+                baseline = data_[data_[baseline_col].isna()][score_col].to_numpy()
+                group_data = data_[data_[hyperparam_col].isin(groups)][score_col].to_numpy()
+                score_col_results[(score_col, "$p$")] = ttest_str(baseline, group_data)
+
+            results.append({
+                (None, "Classifier"): clf,
+                (None, nice_name_map(hyperparam_col, latex=True)): "All",
+                **score_col_results
+            })
+
+
+        results_df = pd.DataFrame(results)
+        # Convert to multiindex
+
+        print(results_df.to_latex(
+            index=False,
+            escape=False,
+            bold_rows=False,
+            label=f"tab:p_tests_clf",
+            na_rep="-",
+            multicolumn=True,
+            multicolumn_format="|l|",
+            column_format="|" + "|".join(["l"] * results_df.shape[1]) + "|",
+            caption=f"t-test results for {hyperparam_col} grouped by {score_cols}.",
+        ))
+
+
+    clfs = list(data["classifier"].unique())
+    for clf in [None] + clfs:
+        group_by("feature_selector", "roc_auc_score_test", "roc_auc_score_diff", clf=clf)
+        group_by("scorer", "roc_auc_score_test", "roc_auc_score_diff", none_name="Baseline", clf=clf)
+        group_by("model", "roc_auc_score_test", clf=clf)
+        group_by("dset", "roc_auc_score_test", clf=clf)
+
+    group_by_stats_test("feature_selector", "model", ["roc_auc_score_test", "roc_auc_score_diff"])
+    group_by_stats_test("scorer", "model", ["roc_auc_score_test", "roc_auc_score_diff"])
+
+    # - Group by feature_selector + scorer
+
 
     # Do a groupby for scorer + feature_selector
 

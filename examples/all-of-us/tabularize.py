@@ -6,7 +6,6 @@ import os
 
 # This query represents dataset "pain_v_ppsp" for domain "person" and was generated for All of Us Registered Tier Dataset v7
 dataset_person_sql = """
->>>>>>> ac2969dc0e3e911ba093008f2e963de4d49d4e93
     SELECT
         person.person_id,
         person.gender_concept_id,
@@ -653,23 +652,10 @@ def main(config: DictConfig):
     for patient in tqdm(patients):
         patient_conditions = dataset_condition_df[dataset_condition_df["person_id"] == patient]["source_concept_name"].unique()
         # Serialize all the questions into a dict
-        questions = {column: 0 for column in columns}
+        questions = {}
         for index, row in dataset_survey_df[dataset_survey_df["person_id"] == patient].iterrows():
-            if row["question"] not in column_to_type:
-                continue
-            if column_to_type[row["question"]][0]  == "one_hot":
-                # Find column name, then one hot name
-                # Don't split here
-                cand_names = [x for x in columns if row["question"] in x]
-                one_hot_name = [x for x in filter(lambda x: row["answer"] in x.split(",")[1], cand_names)]
-                if len(one_hot_name) == 0:
-                    continue
-                questions[one_hot_name] = 1
-            else:
-                try:
-                    questions[row["question"]] = int(re.match(r"\d+", row["answer"]).group(0))
-                except (ValueError, AttributeError):
-                    questions[row["question"]] = 1 if "yes" in row["answer"].lower() else 0
+            questions[row["question"]] = row["answer"]
+        
         for condition in conditions:
             # Serialize the patient data
             patient_conditions = [x for x in patient_conditions if not pd.isna(x)]

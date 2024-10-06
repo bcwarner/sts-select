@@ -15,7 +15,7 @@ seed: 278797835
 # Old argparse arguments
 verbose: 1
 k_folds: 5
-feature_importance: False
+feature_importance: True
 best_params: False
 best_feats: True
 feature_filter: False

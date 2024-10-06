@@ -218,6 +218,84 @@ class MIScorer(BaseScorer):
             random_state=self.random_state,
         ).item()
 
+class PearsonsRScorer(BaseScorer):
+    """
+    Scorer for Pearson's r.
+    """
+
+    def __init__(self, X, y, cache=None, random_state=0, **kwargs):
+        self.random_state = random_state
+        super().__init__(X, y, cache=cache, **kwargs)
+
+    def _X_score(self, x1, x2):
+        from sklearn.feature_selection import r_regression
+        import numpy as np
+
+        return np.abs(r_regression(
+            self.X[:, x1].reshape(-1, 1),
+            self.X[:, x2],
+        ).item())
+
+    def _X_y_score(self, x, y):
+        from sklearn.feature_selection import r_regression
+        import numpy as np
+
+        return np.abs(r_regression(
+            self.X[:, x].reshape(-1, 1),
+            self.y,
+        ).item())
+
+class Chi2Scorer(BaseScorer):
+    """
+    Scorer for chi-squared (valid for categorical X and y only).
+    """
+
+    def __init__(self, X, y, cache=None, random_state=0, **kwargs):
+        self.random_state = random_state
+        super().__init__(X, y, cache=cache, **kwargs)
+
+    def _X_score(self, x1, x2):
+        from sklearn.feature_selection import chi2
+
+        return chi2(
+            self.X[:, x1].reshape(-1, 1),
+            self.X[:, x2],
+        )[0].item()
+
+    def _X_y_score(self, x, y):
+        from sklearn.feature_selection import chi2
+
+        return chi2(
+            self.X[:, x].reshape(-1, 1),
+            self.y,
+            discrete_features=False,
+            random_state=self.random_state,
+        )[0].item()
+
+class FScorer(BaseScorer):
+    """
+    Scorer for chi-squared.
+    """
+
+    def __init__(self, X, y, cache=None, random_state=0, **kwargs):
+        self.random_state = random_state
+        super().__init__(X, y, cache=cache, **kwargs)
+
+    def _X_score(self, x1, x2):
+        from sklearn.feature_selection import f_regression
+
+        return f_regression(
+            self.X[:, x1].reshape(-1, 1),
+            self.X[:, x2],
+        )[0].item()
+
+    def _X_y_score(self, x, y):
+        from sklearn.feature_selection import f_classif
+
+        return f_classif(
+            self.X[:, x].reshape(-1, 1),
+            self.y,
+        )[0].item()
 
 class BaseSTSScorer(BaseScorer):
     def __init__(self, X, y, X_names=None, y_names=None, cache=None, **kwargs):
