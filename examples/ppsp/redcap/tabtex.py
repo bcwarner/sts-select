@@ -67,8 +67,8 @@ def nice_name_map(x, latex=False, none_name=None):
         "MIScorer": "MI" if not latex else "MI",
         "STSScorer": "STS" if not latex else "STS",
         "LinearScorer-MIScorer": "MI & STS" if not latex else r"MI \& STS",
-        "LinearScorer-FScorer": "MI & F-Score" if not latex else r"MI \& F-Score",
-        "LinearScorer-PearsonsRScorer": "MI & Pearson's r" if not latex else r"MI \& Pearson's $r$",
+        "LinearScorer-FScorer": "F-Score & STS" if not latex else r"MI \& F-Score",
+        "LinearScorer-PearsonsRScorer": "Pearson's r & STS" if not latex else r"MI \& Pearson's $r$",
     }
     if x in map and isinstance(map[x], tuple):
         return map[x]
@@ -215,17 +215,18 @@ def main(config: DictConfig) -> None:
                 group_data
             )
             avg_diff = group_data.mean() - baseline.mean()
-            score_col_results[(score_col, "$\mu_S - \mu_B$")] = f"${avg_diff:.3f}$"
+            diff_text = f"${avg_diff:.3f}$"
             pvalue_text = f"$<{ttest.pvalue:.4f}" if ttest.pvalue > 1e-4 else (
                         f"$<{ttest.pvalue:.2e}".replace("e", "\cdot 10^{") + "}")
-            return pvalue_text + ("$$^*$" if ttest.pvalue < 0.05 else "$")
+            pvalue_text += "$$^*$" if ttest.pvalue < 0.05 else "$"
+            return diff_text, pvalue_text
 
         for clf in list(data["classifier"].unique()) + ["All"]:
             if clf == "All":
                 data_ = data.copy()
             else:
                 data_ = data.copy()[data["classifier"] == clf]
-            data_[hyperparam_col] = data_[hyperparam_col].apply(lambda x: nice_name_map(x, none_name=none_name))
+            data_[hyperparam_col] = data_[hyperparam_col].apply(lambda x: nice_name_map(x, none_name=pd.NA))
             # Get baseline groups and convert to Numpy
             # Get the rest of the groupings
             groups = data_[~data_[baseline_col].isna()][hyperparam_col].unique()
@@ -234,28 +235,33 @@ def main(config: DictConfig) -> None:
                 for score_col in score_cols:
                     baseline = data_[data_[baseline_col].isna()][score_col].to_numpy()
                     group_data = data_[data_[hyperparam_col] == group][score_col].to_numpy()
-                    score_col_results[(score_col, "$p$")] = ttest_str(baseline, group_data)
+                    score_col_results[(nice_name_map(score_col), "$\mu_S - \mu_B$")], score_col_results[(nice_name_map(score_col), "$p$")] = ttest_str(baseline, group_data)
                 results.append({
-                    (None, "Classifier"): clf,
-                    (None, nice_name_map(hyperparam_col, latex=True)): group,
+                    ("Selection Hyperparameters", "Classifier"): clf,
+                    nice_name_map(hyperparam_col, latex=True): group,
                     **score_col_results
                 })
             # All hyperparameter groups:
             score_col_results = {}
             for score_col in score_cols:
                 baseline = data_[data_[baseline_col].isna()][score_col].to_numpy()
-                group_data = data_[data_[hyperparam_col].isin(groups)][score_col].to_numpy()
-                score_col_results[(score_col, "$p$")] = ttest_str(baseline, group_data)
+                group_data = data_[~data_[baseline_col].isna()][score_col].to_numpy()
+                score_col_results[(nice_name_map(score_col), "$\mu_S - \mu_B$")], score_col_results[(nice_name_map(score_col), "$p$")] = ttest_str(baseline, group_data)
 
             results.append({
-                (None, "Classifier"): clf,
-                (None, nice_name_map(hyperparam_col, latex=True)): "All",
+                ("Selection Hyperparameters", "Classifier"): clf,
+                nice_name_map(hyperparam_col, latex=True): "All STS",
                 **score_col_results
             })
 
 
         results_df = pd.DataFrame(results)
+        # Sort by the first two columns
+        results_df = results_df.sort_values(
+            by=[("Selection Hyperparameters", "Classifier"), nice_name_map(hyperparam_col, latex=True)]
+        )
         # Convert to multiindex
+        results_df.columns = pd.MultiIndex.from_tuples(results_df.columns)
 
         print(results_df.to_latex(
             index=False,
@@ -266,7 +272,7 @@ def main(config: DictConfig) -> None:
             multicolumn=True,
             multicolumn_format="|l|",
             column_format="|" + "|".join(["l"] * results_df.shape[1]) + "|",
-            caption=f"t-test results for {hyperparam_col} grouped by {score_cols}.",
+            caption=f"t-test results for {nice_name_map(hyperparam_col)} grouped by {' and '.join([nice_name_map(x) for x in score_cols])}.",
         ))
 
 
@@ -279,6 +285,7 @@ def main(config: DictConfig) -> None:
 
     group_by_stats_test("feature_selector", "model", ["roc_auc_score_test", "roc_auc_score_diff"])
     group_by_stats_test("scorer", "model", ["roc_auc_score_test", "roc_auc_score_diff"])
+
 
     # - Group by feature_selector + scorer
 

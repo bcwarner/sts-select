@@ -91,9 +91,7 @@ def line_param(config: OmegaConf, data, param_dict, color_idx):
     plt.xlabel(f"{param_dict['x_name']}")
     plt.ylabel(f"{param_dict['au_name']}")
 
-
-def plot_sts_mi_heatmap(config: DictConfig, MI_X_pairings, MI_X_y_pairings, STS_X_pairings, STS_X_y_pairings):
-    def plot_pairings(X_pairings, X_y_pairings, title):
+def plot_pairings(config, X_pairings, X_y_pairings, title):
         """
         Plot a 2D heatmap of either the MI or STS pairings.
         :return:
@@ -152,8 +150,11 @@ def plot_sts_mi_heatmap(config: DictConfig, MI_X_pairings, MI_X_y_pairings, STS_
         ab.set_xlabel("Score")
         plt.colorbar(a0.get_images()[0], cax=ab)
 
+def plot_sts_mi_heatmap(config: DictConfig, MI_X_pairings, MI_X_y_pairings, STS_X_pairings, STS_X_y_pairings):
+
+
     plt.clf()
-    plot_pairings(MI_X_pairings, MI_X_y_pairings, "MI")
+    plot_pairings(config, MI_X_pairings, MI_X_y_pairings, "MI")
     plt.savefig(os.path.join(config["path"]["figures"], "MI_pairings.pdf"), dpi=300)
     # Delete all conents in the sts_pairings directory
     # for file in os.listdir(
@@ -177,7 +178,7 @@ def plot_sts_mi_heatmap(config: DictConfig, MI_X_pairings, MI_X_y_pairings, STS_
             STS_X_y_pairings = data_dict["X_y_pairings"]
 
         heatmap_name = heatmap.split("/")[-1].replace(".pkl", "")
-        plot_pairings(STS_X_pairings, STS_X_y_pairings, f"STS")
+        plot_pairings(config, STS_X_pairings, STS_X_y_pairings, f"STS")
         plt.savefig(
             os.path.join(
                 config["path"]["figures"], f"STS_{heatmap_name}_pairings.pdf"
@@ -207,6 +208,8 @@ def main(config: DictConfig):
         MI_X_pairings = datadict["X_pairings"]
         MI_X_y_pairings = datadict["X_y_pairings"]
 
+
+
     # Unpiclke the STS cache
     #with open(config["path"]["sts_cache"], "rb") as f:
     #    datadict = pickle.load(f)
@@ -222,6 +225,25 @@ def main(config: DictConfig):
     # Plot the MI and STS pairings as well.
     plot_sts_mi_heatmap(config, MI_X_pairings, MI_X_y_pairings, STS_X_pairings, STS_X_y_pairings)
     #sys.exit()
+
+    with open(config["path"]["f_score_cache"], "rb") as f:
+        datadict = pickle.load(f)
+        FS_X_pairings = datadict["X_pairings"]
+        FS_X_y_pairings = datadict["X_y_pairings"]
+
+    with open(config["path"]["pearson_r_cache"], "rb") as f:
+        datadict = pickle.load(f)
+        PR_X_pairings = datadict["X_pairings"]
+        PR_X_y_pairings = datadict["X_y_pairings"]
+
+    plt.clf()
+    plot_pairings(config, FS_X_pairings, FS_X_y_pairings, "F-Score")
+    plt.savefig(os.path.join(config["path"]["figures"], "FS_pairings.pdf"), dpi=300)
+
+    plt.clf()
+    plot_pairings(config, PR_X_pairings, PR_X_y_pairings, "Pearson's R")
+    plt.savefig(os.path.join(config["path"]["figures"], "PR_pairings.pdf"), dpi=300)
+
 
     results = os.listdir(config["path"]["results"])
     new_figs = results
