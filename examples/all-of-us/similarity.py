@@ -11,6 +11,7 @@ from tqdm import tqdm
 import pickle
 
 from omegaconf import DictConfig, OmegaConf
+import csv
 
 from sts_select.scoring import SentenceTransformerScorer
 
@@ -57,12 +58,9 @@ def get_codebook_columns(config: DictConfig) -> list:
             config_name="config",
             version_base="1.1")
 def main(config: DictConfig) -> None:
-    columns = get_codebook_columns(config)
-    # Save the columns to a file
-    with open(os.path.join(config["path"]["column_names"]), "wb") as f:
-        pickle.dump(columns, f)
-
-    breakpoint()
+    with open(os.path.join(os.curdir, "cache/source_columns.csv"), "r") as f:
+        reader = csv.reader(f)
+        columns = list(next(reader))
 
     # Get all of the models in the fine-tuned directory
     models_path = config["path"]["sts_models_path"]

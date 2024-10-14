@@ -284,18 +284,18 @@ class FScorer(BaseScorer):
     def _X_score(self, x1, x2):
         from sklearn.feature_selection import f_regression
 
-        return f_regression(
+        return 1 - f_regression(
             self.X[:, x1].reshape(-1, 1),
             self.X[:, x2],
-        )[0].item()
+        )[1].item()
 
     def _X_y_score(self, x, y):
         from sklearn.feature_selection import f_classif
 
-        return f_classif(
+        return 1 - f_classif(
             self.X[:, x].reshape(-1, 1),
             self.y,
-        )[0].item()
+        )[1].item()
 
 class BaseSTSScorer(BaseScorer):
     def __init__(self, X, y, X_names=None, y_names=None, cache=None, **kwargs):

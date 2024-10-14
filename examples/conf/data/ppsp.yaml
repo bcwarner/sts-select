@@ -1,0 +1,13 @@
+name: ppsp
+three_month_completion: "Complete?.10"
+X_before: ${data.three_month_completion}
+six_month_completion: "Complete?.11"
+y_after: ${data.six_month_completion}
+label: persistent_pain
+max_categories: 5
+questions:
+  - "In the past week, did you have any pain in your surgical incision or in the area related to your surgery? "
+  - "For pain in the area related to your surgery, did the pain start or worsen after the surgery?"
+  - "On a scale of zero to ten, with zero being no pain and ten being the worst pain, please fill in your average pain level during the past week, while you were at rest."
+  - "On a scale of zero to ten, with zero being no pain and ten being the worst pain, please fill in your average pain level during the past week, when you were active or moving."
+

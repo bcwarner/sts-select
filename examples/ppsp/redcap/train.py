@@ -996,21 +996,21 @@ def main(config: DictConfig) -> None:
         sys.exit(0)
 
     classifiers = {
-        "XGBoost": (
-           XGBClassifier(
-               objective="binary:hinge",
-               eval_metric=roc_auc_score,
-               use_label_encoder=False,
-               random_state=config["seed"],
-               verbosity=max(config["verbose"] - 1, 0),
-               scale_pos_weight=50,
-               #max_leaves=3,
-               #max_depth=3,
-               #alpha=0.1,
-               #eta=0.05,
-           ),
-           {}
-        ),
+        # "XGBoost": (
+        #    XGBClassifier(
+        #        objective="binary:hinge",
+        #        eval_metric=roc_auc_score,
+        #        use_label_encoder=False,
+        #        random_state=config["seed"],
+        #        verbosity=max(config["verbose"] - 1, 0),
+        #        scale_pos_weight=50,
+        #        #max_leaves=3,
+        #        #max_depth=3,
+        #        #alpha=0.1,
+        #        #eta=0.05,
+        #    ),
+        #    {}
+        # ),
         "LinearSVM": (
             LinearSVC(random_state=config["seed"], dual=True),
             {

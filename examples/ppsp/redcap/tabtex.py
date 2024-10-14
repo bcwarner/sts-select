@@ -66,6 +66,8 @@ def nice_name_map(x, latex=False, none_name=None):
         "StdDevSelector": "Std. Dev." if not latex else "Std. Dev.",
         "MIScorer": "MI" if not latex else "MI",
         "STSScorer": "STS" if not latex else "STS",
+        "FScorer": "F-Score",
+        "PearsonsRScorer": "Pearson's r" if not latex else "Pearson's $r$",
         "LinearScorer-MIScorer": "MI & STS" if not latex else r"MI \& STS",
         "LinearScorer-FScorer": "F-Score & STS" if not latex else r"MI \& F-Score",
         "LinearScorer-PearsonsRScorer": "Pearson's r & STS" if not latex else r"MI \& Pearson's $r$",
@@ -173,18 +175,42 @@ def main(config: DictConfig) -> None:
             opts, key=lambda x: np.max(data_[data_[hyperparam_col] == x][score_col])
         )
         plt.gcf().set_size_inches(3.5, 2.75)
+        hyperparam_results = []
         for idx, opt in enumerate(opts):
+            opt_data = data_[data_[hyperparam_col] == opt][score_col]
             plt.violinplot(
-                data_[data_[hyperparam_col] == opt][score_col],
+                opt_data,
                 positions=[idx],
                 vert=False,
                 showmeans=True,
             )
+            hyperparam_results.append({
+                nice_name_map(hyperparam_col, none_name=none_name): opt,
+                "Mean": opt_data.mean(),
+                "Std. Dev.": opt_data.std(),
+                "Min": opt_data.min(),
+                "Max": opt_data.max(),
+            })
+
         plt.xlabel(nice_name_map(score_col))
         plt.ylabel(nice_name_map(hyperparam_col, none_name=none_name))
         # If there's a / in the opts, delete the part before the /
         opts = [x.split("/")[-1] if "/" in x else x for x in opts]
         plt.yticks(ticks=np.arange(len(opts)), labels=opts)
+        if clf is None:
+            opt_data_df = pd.DataFrame(hyperparam_results)
+            print(opt_data_df.to_latex(
+                index=False,
+                escape=False,
+                bold_rows=False,
+                label=f"tab:{hyperparam_col}_{score_col}",
+                na_rep="-",
+                multicolumn=True,
+                multicolumn_format="|l|",
+                column_format="|" + "|".join(["l"] * opt_data_df.shape[1]) + "|",
+                caption="",
+                float_format="%.3f"
+            ))
 
         if score_col2 is not None:
             plt.subplot(1, 2, 2)
@@ -204,7 +230,7 @@ def main(config: DictConfig) -> None:
         plt.savefig(os.path.join(plots_dir, f"{hyperparam_col}_{score_col}_{clf_nice}.pdf"))
         plt.clf()
 
-        # Histogram of the score_col grouped by hyperparam_col
+        # Print
 
     def group_by_stats_test(hyperparam_col, baseline_col, score_cols, none_name="Baseline"):
         # Copy the data and rename the entries in the hyperparam_col to be nicer
@@ -301,11 +327,15 @@ def main(config: DictConfig) -> None:
         # Results: All columns without a scorer.
         results: DataFrame = df[pd.isna(df["scorer"])]
         # + All MI scorers
-        results = pd.concat([results, df[df["scorer"] == "MIScorer"]], axis=0)
+        baseline_scorers = ["MIScorer", "FScorer", "PearsonsRScorer"]
+        results = pd.concat([results, df[df["scorer"].isin(baseline_scorers)].sort_values("scorer")], axis=0)
         # + whichever ft-model is best
         m_ = df[~df["model"].isnull()].groupby("model").max()["roc_auc_score_test"]
         best_model = m_.keys()[m_.argmax()]
-        results = pd.concat([results, df[df["model"] == best_model]], axis=0)
+        best_results = df[df["model"] == best_model]
+        # Drop results that didn't fit
+        best_results = best_results[best_results["roc_auc_score_train"] > 0.5]
+        results = pd.concat([results, best_results], axis=0)
         # Drop the model column
         results = results.drop(columns=["model"])
 
