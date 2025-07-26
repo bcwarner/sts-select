@@ -1,6 +1,7 @@
 # `sts-select`
 [![PyPI - Version](https://img.shields.io/pypi/v/sts-select)](https://pypi.org/project/sts-select/)
 [![Hugging Face](https://img.shields.io/badge/🤗-Models-yellow)](https://huggingface.co/papers/2308.09892)
+[![ACL 2025 Findings](https://img.shields.io/badge/ACL_Anthology-2025.findings--acl.27-ed1c24.svg)](https://aclanthology.org/2025.findings-acl.27/)
 [![arXiv](https://img.shields.io/badge/arXiv-2308.09892-b31b1b.svg)](https://arxiv.org/abs/2308.09892)
 [![PyPI - License](https://img.shields.io/pypi/l/sts-select)](https://pypi.org/project/sts-select/)
 ## Overview
@@ -45,15 +46,27 @@ We provide a refactored version of our code used in our findings in the `example
 
 ## Citing
 
-If you use this code in your research, please cite the following preprint:
+If you use this code in your research, please cite the following paper:
 
 ```
-@misc{warner2023utilizing,
-      title={Utilizing Semantic Textual Similarity for Clinical Survey Data Feature Selection}, 
-      author={Benjamin C. Warner and Ziqi Xu and Simon Haroutounian and Thomas Kannampallil and Chenyang Lu},
-      year={2023},
-      eprint={2308.09892},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL}
+@inproceedings{warner-etal-2025-utilizing,
+    title = "Utilizing Semantic Textual Similarity for Clinical Survey Data Feature Selection",
+    author = "Warner, Benjamin C  and
+      Xu, Ziqi  and
+      Haroutounian, Simon  and
+      Kannampallil, Thomas  and
+      Lu, Chenyang",
+    editor = "Che, Wanxiang  and
+      Nabende, Joyce  and
+      Shutova, Ekaterina  and
+      Pilehvar, Mohammad Taher",
+    booktitle = "Findings of the Association for Computational Linguistics: ACL 2025",
+    month = jul,
+    year = "2025",
+    address = "Vienna, Austria",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2025.findings-acl.27/",
+    pages = "502--520",
+    ISBN = "979-8-89176-256-5",
 }
 ```
